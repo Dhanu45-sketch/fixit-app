@@ -1,16 +1,5 @@
 // ==========================================
 // FILE: lib/screens/profile/profile_screen.dart
-// ==========================================
-import 'package:flutter/material.dart';
-import '../../utils/colors.dart';
-import '../../widgets/custom_button.dart';
-import 'edit_profile_screen.dart';
-import '../auth/login_screen.dart';
-
-
-
-// ==========================================
-// FILE: lib/screens/profile/profile_screen.dart
 // FIXED VERSION - No overflow in header
 // ==========================================
 import 'package:flutter/material.dart';
@@ -51,7 +40,7 @@ class ProfileScreen extends StatelessWidget {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const SizedBox(height: 50),
+                      const SizedBox(height: 40),
                       CircleAvatar(
                         radius: 50,
                         backgroundColor: Colors.white,

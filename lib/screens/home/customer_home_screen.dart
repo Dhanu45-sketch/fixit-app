@@ -1,55 +1,8 @@
 // ==========================================
 // FILE: lib/screens/home/customer_home_screen.dart
+// FINAL CLEAN VERSION
 // ==========================================
-import 'package:flutter/material.dart';
-import '../../models/service_category_model.dart';
-import '../../models/handyman_model.dart';
-import '../../widgets/category_card.dart';
-import '../../widgets/handyman_card.dart';
-import '../../widgets/search_bar_widget.dart';
-import '../../utils/colors.dart';
-import 'all_categories_screen.dart';
-import '../services/service_detail_screen.dart';
-import '../handyman/handyman_detail_screen.dart';
-import '../profile/profile_screen.dart';
-import '../bookings/bookings_screen.dart';
-import '../search/search_screen.dart';
 
-// And update the import:
-import '../notifications/notifications_screen.dart';
-
-
-// ==========================================
-// FILE: lib/screens/home/customer_home_screen.dart
-// ACTUALLY FIXED VERSION
-// ==========================================
-import 'package:flutter/material.dart';
-import '../../models/service_category_model.dart';
-import '../../models/handyman_model.dart';
-import '../../widgets/category_card.dart';
-import '../../widgets/handyman_card.dart';
-import '../../widgets/search_bar_widget.dart';
-import '../../utils/colors.dart';
-import 'all_categories_screen.dart';
-import '../services/service_detail_screen.dart';
-import '../handyman/handyman_detail_screen.dart';
-import '../profile/profile_screen.dart';
-
-import '../bookings/bookings_screen.dart'; // ADD THIS IMPORT
-
-
-
-
-
-
-
-
-
-
-// ==========================================
-// FILE: lib/screens/home/customer_home_screen.dart
-// FINAL COMPLETE VERSION WITH ALL FEATURES
-// ==========================================
 import 'package:flutter/material.dart';
 import '../../models/service_category_model.dart';
 import '../../models/handyman_model.dart';
