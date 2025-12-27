@@ -1,0 +1,4 @@
+PS C:\Users\USER> adb install -r "C:\Users\USER\AndroidStudioProjects\aura3\android\app\build\outputs\apk\release\app-release.apk"
+Performing Streamed Install
+Success
+PS C:\Users\USER> adb shell am start -n com.example.aura3/.MainActivity

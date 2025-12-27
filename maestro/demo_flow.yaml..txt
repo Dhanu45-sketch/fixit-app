@@ -1,0 +1,6 @@
+appId: com.example.fixit_app
+---
+- launchApp
+- assertVisible: "Welcome"
+- scroll
+- assertVisible: "Service Categories"

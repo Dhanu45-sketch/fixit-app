@@ -1,0 +1,12 @@
+appId: com.example.fixit_app
+---
+- launchApp
+- stopApp
+- launchApp
+       # The correct command is 'delay', not 'wait'
+- assertVisible:
+    text: ".*Welcome.*" # This looks for "Welcome" anywhere in the UI
+    index: 0            # In case there are multiple, pick the first one
+- assertVisible: "Service Categories"
+- scroll
+- assertVisible: "Top Rated Handymen"

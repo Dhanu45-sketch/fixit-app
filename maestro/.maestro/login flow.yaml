@@ -1,0 +1,30 @@
+appId: com.example.fixit_app
+---
+- launchApp
+- stopApp
+- launchApp
+- takeScreenshot: "1_Start_Screen"
+
+# --- SCENARIO 1: EMPTY FIELDS ---
+- tapOn: ".*Customer.*"
+- takeScreenshot: "2_Role_Selected"
+- tapOn: "Sign In"
+- assertVisible: "Please enter your email" # Forces wait for validation error
+- takeScreenshot: "3_Empty_Field_Error"
+
+
+
+
+# --- SCENARIO 2: CORRECT LOGIN ---
+# We must clear the fields first by re-tapping and typing
+- tapOn: "Email"
+- inputText: "kk@email.com"
+- tapOn: "Password"
+- inputText: "12345678"
+- hideKeyboard
+- takeScreenshot: "5_Correct_Data_Entered"
+
+- tapOn:
+    point: "50%, 75%" 
+- assertVisible: ".*Welcome.*"
+- takeScreenshot: "6_Login_Success"
