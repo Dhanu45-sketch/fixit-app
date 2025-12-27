@@ -1,24 +1,41 @@
-// ==========================================
-// FILE: lib/widgets/handyman_card.dart
-// ==========================================
+// lib/widgets/handyman_card.dart
 import 'package:flutter/material.dart';
-import '../models/handyman_model.dart';
+import '../services/firestore_service.dart';
 import '../utils/colors.dart';
+import '../screens/handyman/handyman_detail_screen.dart'; // Ensure this path is correct
 
 class HandymanCard extends StatelessWidget {
-  final Handyman handyman;
-  final VoidCallback onTap;
+  final String handymanId; // This is the UID from Firestore
+  final double rating;
+  final int jobsCompleted;
+  final double hourlyRate;
+  final String categoryName;
 
   const HandymanCard({
     Key? key,
-    required this.handyman,
-    required this.onTap,
+    required this.handymanId,
+    required this.rating,
+    required this.jobsCompleted,
+    required this.hourlyRate,
+    required this.categoryName,
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
+    final firestoreService = FirestoreService();
+
     return GestureDetector(
-      onTap: onTap,
+      onTap: () {
+        // FIX: Only pass handymanId as per our updated Detail Screen constructor
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (context) => HandymanDetailScreen(
+              handymanId: handymanId,
+            ),
+          ),
+        );
+      },
       child: Container(
         margin: const EdgeInsets.only(bottom: 16),
         padding: const EdgeInsets.all(16),
@@ -33,106 +50,95 @@ class HandymanCard extends StatelessWidget {
             ),
           ],
         ),
-        child: Row(
-          children: [
-            CircleAvatar(
-              radius: 35,
-              backgroundColor: AppColors.primary.withOpacity(0.1),
-              child: Text(
-                handyman.firstName[0] + handyman.lastName[0],
-                style: const TextStyle(
-                  fontSize: 24,
-                  fontWeight: FontWeight.bold,
-                  color: AppColors.primary,
-                ),
-              ),
-            ),
-            const SizedBox(width: 16),
-            Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    handyman.fullName,
+        child: FutureBuilder<Map<String, dynamic>?>(
+          // Fetch user details once for the whole card
+          future: firestoreService.getUserProfile(handymanId),
+          builder: (context, snapshot) {
+            final userData = snapshot.data;
+            final firstName = userData?['first_name'] ?? '';
+            final lastName = userData?['last_name'] ?? '';
+            final fullName = firstName.isEmpty ? "Handyman" : "$firstName $lastName";
+            final String initial = firstName.isNotEmpty ? firstName[0].toUpperCase() : 'H';
+
+            return Row(
+              children: [
+                // PROFILE IMAGE / INITIALS
+                CircleAvatar(
+                  radius: 30,
+                  backgroundColor: AppColors.primary.withOpacity(0.1),
+                  child: snapshot.connectionState == ConnectionState.waiting
+                      ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                      : Text(
+                    initial,
                     style: const TextStyle(
-                      fontSize: 16,
+                      fontSize: 24,
                       fontWeight: FontWeight.bold,
-                      color: AppColors.textDark,
+                      color: AppColors.primary,
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    handyman.categoryName,
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: AppColors.textLight,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Row(
+                ),
+                const SizedBox(width: 16),
+
+                // HANDYMAN INFO
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Icon(Icons.star, size: 16, color: Colors.amber),
-                      const SizedBox(width: 4),
                       Text(
-                        '${handyman.rating.toStringAsFixed(1)} (${handyman.totalJobs} jobs)',
+                        fullName,
                         style: const TextStyle(
-                          fontSize: 12,
-                          color: AppColors.textLight,
+                          fontSize: 16,
+                          fontWeight: FontWeight.bold,
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      const Icon(Icons.work_outline, size: 16, color: AppColors.textLight),
-                      const SizedBox(width: 4),
                       Text(
-                        '${handyman.experience} yrs',
-                        style: const TextStyle(
-                          fontSize: 12,
-                          color: AppColors.textLight,
-                        ),
+                        categoryName,
+                        style: const TextStyle(color: AppColors.textLight, fontSize: 13),
+                      ),
+                      const SizedBox(height: 8),
+                      Row(
+                        children: [
+                          const Icon(Icons.star, color: Colors.amber, size: 16),
+                          const SizedBox(width: 4),
+                          Text(
+                            rating.toStringAsFixed(1),
+                            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 13),
+                          ),
+                          const SizedBox(width: 12),
+                          const Icon(Icons.check_circle, color: AppColors.success, size: 16),
+                          const SizedBox(width: 4),
+                          Text(
+                            "$jobsCompleted jobs",
+                            style: const TextStyle(color: AppColors.textLight, fontSize: 13),
+                          ),
+                        ],
                       ),
                     ],
                   ),
-                ],
-              ),
-            ),
-            Column(
-              crossAxisAlignment: CrossAxisAlignment.end,
-              children: [
-                Text(
-                  'Rs ${handyman.hourlyRate.toStringAsFixed(0)}',
-                  style: const TextStyle(
-                    fontSize: 16,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.primary,
-                  ),
                 ),
-                const Text(
-                  'per hour',
-                  style: TextStyle(fontSize: 11, color: AppColors.textLight),
-                ),
-                const SizedBox(height: 8),
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                  decoration: BoxDecoration(
-                    color: handyman.workStatus == 'Available'
-                        ? AppColors.success.withOpacity(0.1)
-                        : AppColors.error.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Text(
-                    handyman.workStatus,
-                    style: TextStyle(
-                      fontSize: 10,
-                      fontWeight: FontWeight.w600,
-                      color: handyman.workStatus == 'Available'
-                          ? AppColors.success
-                          : AppColors.error,
+
+                // PRICE TAG
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    const Text("Hourly", style: TextStyle(fontSize: 10, color: AppColors.textLight)),
+                    Text(
+                      "Rs ${hourlyRate.toStringAsFixed(0)}",
+                      style: const TextStyle(
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.primary,
+                        fontSize: 16,
+                      ),
                     ),
-                  ),
+                  ],
                 ),
               ],
-            ),
-          ],
+            );
+          },
         ),
       ),
     );

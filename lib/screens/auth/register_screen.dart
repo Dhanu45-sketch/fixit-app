@@ -1,30 +1,17 @@
-// ==========================================
-// 7. screens/auth/register_screen.dart
-// ==========================================
+// lib/screens/auth/register_screen.dart
 import 'package:flutter/material.dart';
-import '../../models/handyman_model.dart';
+import '../../services/auth_service.dart';
+import '../../services/firestore_service.dart';
+import '../../utils/colors.dart';
 import '../../widgets/custom_button.dart';
-import '../../utils/colors.dart';
-import '../../widgets/booking_bottom_sheet.dart';
-import 'package:flutter/material.dart';
-import '../../models/service_category_model.dart';
-import '../../models/handyman_model.dart';
-import '../../widgets/category_card.dart';
-import '../../widgets/handyman_card.dart';
-import '../../widgets/search_bar_widget.dart';
-import '../../utils/colors.dart';
-
-import '../services/service_detail_screen.dart';
-import '../handyman/handyman_detail_screen.dart';
-import 'package:fixit_app/screens/auth/role_selection_screen.dart';
-import 'package:fixit_app/screens/auth/register_screen.dart';
-import '../services/service_detail_screen.dart';
-import '../handyman/handyman_detail_screen.dart';
 import '../../widgets/custom_textfield.dart';
-
+import '../home/customer_home_screen.dart';
+import '../home/handyman_home_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
-  const RegisterScreen({Key? key}) : super(key: key);
+  final bool isHandyman;
+
+  const RegisterScreen({super.key, this.isHandyman = false});
 
   @override
   State<RegisterScreen> createState() => _RegisterScreenState();
@@ -32,15 +19,27 @@ class RegisterScreen extends StatefulWidget {
 
 class _RegisterScreenState extends State<RegisterScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _authService = AuthService();
+  final _firestoreService = FirestoreService();
+
   final _firstNameController = TextEditingController();
   final _lastNameController = TextEditingController();
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
+
+  // Handyman Specific Fields
+  String? _selectedCategoryId;
+  String? _selectedCategoryName;
+  final _experienceController = TextEditingController();
+  final _hourlyRateController = TextEditingController();
+  final _bioController = TextEditingController();
+
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   bool _isLoading = false;
+  String? _errorMessage;
 
   @override
   void dispose() {
@@ -50,41 +49,85 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _phoneController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
+    _experienceController.dispose();
+    _hourlyRateController.dispose();
+    _bioController.dispose();
     super.dispose();
   }
 
   Future<void> _handleRegister() async {
-    if (_formKey.currentState!.validate()) {
-      setState(() => _isLoading = true);
+    if (!_formKey.currentState!.validate()) return;
 
-      // Simulate API call
-      await Future.delayed(const Duration(seconds: 2));
+    if (_passwordController.text != _confirmPasswordController.text) {
+      setState(() => _errorMessage = 'Passwords do not match');
+      return;
+    }
 
-      setState(() => _isLoading = false);
+    if (widget.isHandyman && _selectedCategoryId == null) {
+      setState(() => _errorMessage = 'Please select a service category');
+      return;
+    }
 
-      // Show success message
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(
-          content: Text('Account created successfully!'),
-          backgroundColor: AppColors.success,
-        ),
-      );
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
 
-      // Navigate back to login
-      Navigator.of(context).pop();
+    try {
+      if (widget.isHandyman) {
+        await _authService.registerHandyman(
+          firstName: _firstNameController.text.trim(),
+          lastName: _lastNameController.text.trim(),
+          email: _emailController.text.trim(),
+          phone: _phoneController.text.trim(),
+          password: _passwordController.text,
+          categoryId: _selectedCategoryId!,
+          categoryName: _selectedCategoryName!,
+          experience: int.tryParse(_experienceController.text) ?? 0,
+          hourlyRate: double.tryParse(_hourlyRateController.text) ?? 0.0,
+          bio: _bioController.text.trim().isEmpty ? null : _bioController.text.trim(),
+        );
+
+        if (mounted) {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const HandymanHomeScreen()),
+          );
+        }
+      } else {
+        await _authService.registerCustomer(
+          firstName: _firstNameController.text.trim(),
+          lastName: _lastNameController.text.trim(),
+          email: _emailController.text.trim(),
+          phone: _phoneController.text.trim(),
+          password: _passwordController.text,
+        );
+
+        if (mounted) {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const CustomerHomeScreen()),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() {
+          _errorMessage = e.toString().replaceAll('Exception: ', '');
+          _isLoading = false;
+        });
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    // Branding color based on role selection
+    final themeColor = widget.isHandyman ? AppColors.secondary : AppColors.primary;
+
     return Scaffold(
       appBar: AppBar(
-        backgroundColor: Colors.transparent,
-        elevation: 0,
-        leading: IconButton(
-          icon: const Icon(Icons.arrow_back, color: AppColors.textDark),
-          onPressed: () => Navigator.of(context).pop(),
-        ),
+        title: Text(widget.isHandyman ? 'Handyman Registration' : 'Customer Registration'),
+        backgroundColor: themeColor,
+        foregroundColor: Colors.white,
       ),
       body: SafeArea(
         child: SingleChildScrollView(
@@ -94,170 +137,232 @@ class _RegisterScreenState extends State<RegisterScreen> {
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
+                if (_errorMessage != null) _buildErrorWidget(),
+
                 const Text(
-                  'Create Account',
-                  style: TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textDark,
-                  ),
+                  'Basic Information',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
-                const SizedBox(height: 8),
-                const Text(
-                  'Sign up to get started',
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: AppColors.textLight,
+                const SizedBox(height: 16),
+
+                _buildBasicFields(),
+
+                if (widget.isHandyman) ...[
+                  const SizedBox(height: 32),
+                  const Text(
+                    'Professional Information',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                   ),
-                ),
+                  const SizedBox(height: 16),
+                  _buildCategoryDropdown(),
+                  const SizedBox(height: 16),
+                  _buildProfessionalFields(),
+                ],
+
                 const SizedBox(height: 32),
-                Row(
-                  children: [
-                    Expanded(
-                      child: CustomTextField(
-                        label: 'First Name',
-                        hint: 'John',
-                        prefixIcon: Icons.person_outline,
-                        controller: _firstNameController,
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Required';
-                          }
-                          return null;
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: CustomTextField(
-                        label: 'Last Name',
-                        hint: 'Doe',
-                        prefixIcon: Icons.person_outline,
-                        controller: _lastNameController,
-                        validator: (value) {
-                          if (value == null || value.isEmpty) {
-                            return 'Required';
-                          }
-                          return null;
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-                CustomTextField(
-                  label: 'Email',
-                  hint: 'john.doe@email.com',
-                  prefixIcon: Icons.email_outlined,
-                  controller: _emailController,
-                  keyboardType: TextInputType.emailAddress,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter your email';
-                    }
-                    if (!value.contains('@')) {
-                      return 'Please enter a valid email';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 20),
-                CustomTextField(
-                  label: 'Phone',
-                  hint: '077 123 4567',
-                  prefixIcon: Icons.phone_outlined,
-                  controller: _phoneController,
-                  keyboardType: TextInputType.phone,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter your phone number';
-                    }
-                    return null;
-                  },
-                ),
-                const SizedBox(height: 20),
-                CustomTextField(
-                  label: 'Password',
-                  hint: 'At least 6 characters',
-                  prefixIcon: Icons.lock_outline,
-                  controller: _passwordController,
-                  obscureText: _obscurePassword,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter a password';
-                    }
-                    if (value.length < 6) {
-                      return 'Password must be at least 6 characters';
-                    }
-                    return null;
-                  },
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      _obscurePassword ? Icons.visibility_off : Icons.visibility,
-                      color: AppColors.textLight,
-                    ),
-                    onPressed: () {
-                      setState(() => _obscurePassword = !_obscurePassword);
-                    },
-                  ),
-                ),
-                const SizedBox(height: 20),
-                CustomTextField(
-                  label: 'Confirm Password',
-                  hint: 'Re-enter password',
-                  prefixIcon: Icons.lock_outline,
-                  controller: _confirmPasswordController,
-                  obscureText: _obscureConfirmPassword,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please confirm your password';
-                    }
-                    if (value != _passwordController.text) {
-                      return 'Passwords do not match';
-                    }
-                    return null;
-                  },
-                  suffixIcon: IconButton(
-                    icon: Icon(
-                      _obscureConfirmPassword ? Icons.visibility_off : Icons.visibility,
-                      color: AppColors.textLight,
-                    ),
-                    onPressed: () {
-                      setState(() => _obscureConfirmPassword = !_obscureConfirmPassword);
-                    },
-                  ),
-                ),
-                const SizedBox(height: 32),
+
                 CustomButton(
-                  text: 'Create Account',
+                  text: widget.isHandyman ? 'Register as Handyman' : 'Register as Customer',
                   onPressed: _handleRegister,
                   isLoading: _isLoading,
                 ),
-                const SizedBox(height: 24),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Text(
-                      'Already have an account? ',
-                      style: TextStyle(color: AppColors.textLight),
-                    ),
-                    TextButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      child: const Text(
-                        'Sign In',
-                        style: TextStyle(
-                          color: AppColors.primary,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+
+                const SizedBox(height: 16),
+                _buildLoginRedirect(),
               ],
             ),
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildErrorWidget() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: 20),
+      decoration: BoxDecoration(
+        color: Colors.red.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.red.shade200),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.error_outline, color: Colors.red.shade700),
+          const SizedBox(width: 8),
+          Expanded(
+            child: Text(
+              _errorMessage!,
+              style: TextStyle(color: Colors.red.shade700, fontSize: 13),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildBasicFields() {
+    return Column(
+      children: [
+        CustomTextField(
+          label: 'First Name',
+          hint: 'Enter your first name',
+          prefixIcon: Icons.person_outline,
+          controller: _firstNameController,
+          validator: (value) => value?.trim().isEmpty ?? true ? 'Required' : null,
+        ),
+        const SizedBox(height: 16),
+        CustomTextField(
+          label: 'Last Name',
+          hint: 'Enter your last name',
+          prefixIcon: Icons.person_outline,
+          controller: _lastNameController,
+          validator: (value) => value?.trim().isEmpty ?? true ? 'Required' : null,
+        ),
+        const SizedBox(height: 16),
+        CustomTextField(
+          label: 'Email',
+          hint: 'Enter your email',
+          prefixIcon: Icons.email_outlined,
+          controller: _emailController,
+          keyboardType: TextInputType.emailAddress,
+          validator: (value) {
+            if (value?.trim().isEmpty ?? true) return 'Required';
+            if (!value!.contains('@')) return 'Invalid email';
+            return null;
+          },
+        ),
+        const SizedBox(height: 16),
+        CustomTextField(
+          label: 'Phone Number',
+          hint: '07XXXXXXXX',
+          prefixIcon: Icons.phone_outlined,
+          controller: _phoneController,
+          keyboardType: TextInputType.phone,
+          validator: (value) => value?.trim().isEmpty ?? true ? 'Required' : null,
+        ),
+        const SizedBox(height: 16),
+        CustomTextField(
+          label: 'Password',
+          hint: 'Min 8 characters',
+          prefixIcon: Icons.lock_outline,
+          controller: _passwordController,
+          obscureText: _obscurePassword,
+          suffixIcon: IconButton(
+            icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility),
+            onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+          ),
+          validator: (value) => (value?.length ?? 0) < 8 ? 'Min 8 characters' : null,
+        ),
+        const SizedBox(height: 16),
+        CustomTextField(
+          label: 'Confirm Password',
+          hint: 'Re-enter password',
+          prefixIcon: Icons.lock_outline,
+          controller: _confirmPasswordController,
+          obscureText: _obscureConfirmPassword,
+          suffixIcon: IconButton(
+            icon: Icon(_obscureConfirmPassword ? Icons.visibility_off : Icons.visibility),
+            onPressed: () => setState(() => _obscureConfirmPassword = !_obscureConfirmPassword),
+          ),
+          validator: (value) => value?.isEmpty ?? true ? 'Required' : null,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildCategoryDropdown() {
+    return StreamBuilder<List<Map<String, dynamic>>>(
+      // Fetches from "serviceCategories" collection
+      stream: _firestoreService.getServiceCategories(),
+      builder: (context, snapshot) {
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
+          return const Padding(
+            padding: EdgeInsets.all(8.0),
+            child: Text(
+              'No categories found. Ensure collection name is "serviceCategories" in Firestore.',
+              style: TextStyle(color: Colors.orange, fontSize: 12),
+            ),
+          );
+        }
+
+        final categories = snapshot.data!;
+
+        return DropdownButtonFormField<String>(
+          decoration: InputDecoration(
+            labelText: 'Service Category',
+            prefixIcon: const Icon(Icons.category_outlined),
+            border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: AppColors.secondary, width: 2),
+            ),
+          ),
+          value: _selectedCategoryId,
+          items: categories.map((cat) {
+            return DropdownMenuItem<String>(
+              value: cat['id'], // e.g., "it_support"
+              child: Text('${cat['icon'] ?? '🔧'} ${cat['name'].toString().replaceAll('_', ' ')}'),
+            );
+          }).toList(),
+          onChanged: (val) {
+            setState(() {
+              _selectedCategoryId = val;
+              // Finds the "name" field from the selected category to store in handymanProfiles
+              _selectedCategoryName = categories.firstWhere((c) => c['id'] == val)['name'];
+            });
+          },
+          validator: (value) => value == null ? 'Required' : null,
+        );
+      },
+    );
+  }
+
+  Widget _buildProfessionalFields() {
+    return Column(
+      children: [
+        CustomTextField(
+          label: 'Years of Experience',
+          hint: 'e.g., 5',
+          prefixIcon: Icons.work_outline,
+          controller: _experienceController,
+          keyboardType: TextInputType.number,
+          validator: (value) => value?.isEmpty ?? true ? 'Required' : null,
+        ),
+        const SizedBox(height: 16),
+        CustomTextField(
+          label: 'Hourly Rate (LKR)',
+          hint: 'e.g., 1500',
+          prefixIcon: Icons.payments_outlined,
+          controller: _hourlyRateController,
+          keyboardType: TextInputType.number,
+          validator: (value) => value?.isEmpty ?? true ? 'Required' : null,
+        ),
+        const SizedBox(height: 16),
+        CustomTextField(
+          label: 'Bio',
+          hint: 'Tell customers about your expertise...',
+          prefixIcon: Icons.info_outline,
+          controller: _bioController,
+          maxLines: 3,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLoginRedirect() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        const Text('Already have an account? ', style: TextStyle(color: AppColors.textLight)),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Login', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)),
+        ),
+      ],
     );
   }
 }

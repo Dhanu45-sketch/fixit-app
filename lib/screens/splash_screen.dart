@@ -1,27 +1,13 @@
 // ==========================================
-// 5. screens/splash_screen.dart
+// FILE: lib/screens/splash_screen.dart
 // ==========================================
+
 import 'package:flutter/material.dart';
-import '../../models/handyman_model.dart';
-import '../../widgets/custom_button.dart';
-import '../../utils/colors.dart';
-import '../../widgets/booking_bottom_sheet.dart';
-import 'package:flutter/material.dart';
-import '../../models/service_category_model.dart';
-import '../../models/handyman_model.dart';
-import '../../widgets/handyman_card.dart';
-import '../../widgets/search_bar_widget.dart';
-import 'package:flutter/material.dart';
-import '../../models/service_category_model.dart';
-import '../../models/handyman_model.dart';
-import '../../widgets/category_card.dart';
-import '../../widgets/handyman_card.dart';
-import '../../widgets/search_bar_widget.dart';
-import '../../utils/colors.dart';
-import 'package:fixit_app/screens/auth/login_screen.dart';
-import 'package:flutter/material.dart';
-import '../utils/colors.dart';
-import 'auth/login_screen.dart';
+import 'dart:async';
+
+import 'package:fixit_app/utils/colors.dart';
+// Updated import to include the RoleSelectionScreen
+import 'package:fixit_app/screens/auth/role_selection_screen.dart';
 
 class SplashScreen extends StatefulWidget {
   const SplashScreen({Key? key}) : super(key: key);
@@ -30,7 +16,8 @@ class SplashScreen extends StatefulWidget {
   State<SplashScreen> createState() => _SplashScreenState();
 }
 
-class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderStateMixin {
+class _SplashScreenState extends State<SplashScreen>
+    with SingleTickerProviderStateMixin {
   late AnimationController _controller;
   late Animation<double> _fadeAnimation;
   late Animation<double> _scaleAnimation;
@@ -53,10 +40,11 @@ class _SplashScreenState extends State<SplashScreen> with SingleTickerProviderSt
 
     _controller.forward();
 
+    // Navigate to RoleSelectionScreen after 3 seconds
     Future.delayed(const Duration(seconds: 3), () {
       if (mounted) {
         Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const LoginScreen()),
+          MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
         );
       }
     });

@@ -1,41 +1,29 @@
-// ==========================================
-// FILE: lib/widgets/category_card.dart
-// ==========================================
+// lib/widgets/category_card.dart
 import 'package:flutter/material.dart';
-import '../models/service_category_model.dart';
 import '../utils/colors.dart';
 
 class CategoryCard extends StatelessWidget {
-  final ServiceCategory category;
+  final String icon;
+  final String name;
+  final int count;
   final VoidCallback onTap;
 
   const CategoryCard({
-    Key? key,
-    required this.category,
+    super.key,
+    required this.icon,
+    required this.name,
+    required this.count,
     required this.onTap,
-  }) : super(key: key);
-
-  String _getIconForCategory(String categoryName) {
-    final icons = {
-      'Plumbing': '🔧',
-      'Electrical': '⚡',
-      'Carpentry': '🪚',
-      'Painting': '🎨',
-      'Masonry': '🧱',
-      'AC Repair': '❄️',
-      'Cleaning': '🧹',
-      'Roof Repair': '🏠',
-      'Landscaping': '🌳',
-      'IT Support': '💻',
-    };
-    return icons[categoryName] ?? '🔧';
-  }
+  });
 
   @override
   Widget build(BuildContext context) {
-    return GestureDetector(
+    return InkWell(
       onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
       child: Container(
+        // Added padding to ensure internal elements don't touch the edges
+        padding: const EdgeInsets.all(8.0),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
@@ -50,32 +38,34 @@ class CategoryCard extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            Container(
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withOpacity(0.1),
-                shape: BoxShape.circle,
-              ),
+            // Using a Flexible wrapper for the icon/emoji
+            Text(icon, style: const TextStyle(fontSize: 32)), // Reduced slightly from 40 to save space
+            const SizedBox(height: 8),
+
+            // FIX: Use Flexible to prevent the Name from causing overflow
+            Flexible(
               child: Text(
-                _getIconForCategory(category.name),
-                style: const TextStyle(fontSize: 31),
+                name,
+                textAlign: TextAlign.center,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontWeight: FontWeight.bold,
+                  fontSize: 14, // Reduced slightly from 16 to fit constraints
+                  color: AppColors.textDark,
+                ),
               ),
             ),
-            const SizedBox(height: 10),
+
+            const SizedBox(height: 2),
+
+            // FIX: Keep the count text small and single-line
             Text(
-              category.name,
+              '$count Specialists',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
               style: const TextStyle(
-                fontSize: 12,
-                fontWeight: FontWeight.w600,
-                color: AppColors.textDark,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            const SizedBox(height: 3),
-            Text(
-              '${category.handymenCount} available',
-              style: const TextStyle(
-                fontSize: 11,
+                fontSize: 11, // Reduced slightly from 12
                 color: AppColors.textLight,
               ),
             ),

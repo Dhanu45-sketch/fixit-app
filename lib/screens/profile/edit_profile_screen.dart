@@ -1,10 +1,11 @@
-// ==========================================
-// FILE: lib/screens/profile/edit_profile_screen.dart
-// ==========================================
+import 'dart:io';
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:image_picker/image_picker.dart';
 import '../../utils/colors.dart';
 import '../../widgets/custom_textfield.dart';
 import '../../widgets/custom_button.dart';
+import '../../services/auth_service.dart';
 
 class EditProfileScreen extends StatefulWidget {
   final bool isHandyman;
@@ -20,25 +21,33 @@ class EditProfileScreen extends StatefulWidget {
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
   final _formKey = GlobalKey<FormState>();
-  final _firstNameController = TextEditingController(text: 'Amal');
-  final _lastNameController = TextEditingController(text: 'Perera');
-  final _emailController = TextEditingController(text: 'amal.perera@email.com');
-  final _phoneController = TextEditingController(text: '0771234567');
-  final _addressController = TextEditingController(text: '12 Lake Rd');
-  final _cityController = TextEditingController(text: 'Kandy');
-  final _provinceController = TextEditingController(text: 'Central');
+  final _authService = AuthService();
+  final _picker = ImagePicker();
 
-  // Handyman specific
-  final _experienceController = TextEditingController(text: '5');
-  final _hourlyRateController = TextEditingController(text: '1500');
+  final _firstNameController = TextEditingController();
+  final _lastNameController = TextEditingController();
+  final _phoneController = TextEditingController();
+  final _addressController = TextEditingController();
+  final _cityController = TextEditingController();
+  final _provinceController = TextEditingController();
+  final _experienceController = TextEditingController();
+  final _hourlyRateController = TextEditingController();
 
   bool _isLoading = false;
+  bool _isFetching = true;
+  File? _imageFile;
+  String? _existingProfileUrl;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadCurrentUserData();
+  }
 
   @override
   void dispose() {
     _firstNameController.dispose();
     _lastNameController.dispose();
-    _emailController.dispose();
     _phoneController.dispose();
     _addressController.dispose();
     _cityController.dispose();
@@ -48,32 +57,110 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     super.dispose();
   }
 
+  Future<void> _loadCurrentUserData() async {
+    final userId = _authService.currentUserId;
+    if (userId == null) return;
+
+    try {
+      final userDoc = await FirebaseFirestore.instance.collection('users').doc(userId).get();
+      if (userDoc.exists && mounted) {
+        final data = userDoc.data()!;
+        setState(() {
+          _firstNameController.text = data['first_name'] ?? '';
+          _lastNameController.text = data['last_name'] ?? '';
+          _phoneController.text = data['phone'] ?? '';
+          _addressController.text = data['address'] ?? '';
+          _cityController.text = data['city'] ?? '';
+          _provinceController.text = data['province'] ?? '';
+          _existingProfileUrl = data['profile_image'];
+        });
+      }
+
+      if (widget.isHandyman && mounted) {
+        final hpDoc = await FirebaseFirestore.instance.collection('handymanProfiles').doc(userId).get();
+        if (hpDoc.exists) {
+          final hpData = hpDoc.data()!;
+          setState(() {
+            _experienceController.text = hpData['experience']?.toString() ?? '0';
+            _hourlyRateController.text = hpData['hourly_rate']?.toString() ?? '0';
+          });
+        }
+      }
+    } catch (e) {
+      debugPrint("Error fetching profile: $e");
+    } finally {
+      if (mounted) setState(() => _isFetching = false);
+    }
+  }
+
+  Future<void> _pickImage() async {
+    final pickedFile = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
+    if (pickedFile != null) {
+      setState(() {
+        _imageFile = File(pickedFile.path);
+      });
+    }
+  }
+
   Future<void> _saveProfile() async {
-    if (_formKey.currentState!.validate()) {
-      setState(() => _isLoading = true);
+    if (!_formKey.currentState!.validate()) return;
 
-      await Future.delayed(const Duration(seconds: 2));
+    setState(() => _isLoading = true);
+    final userId = _authService.currentUserId;
+    if (userId == null) return;
 
-      setState(() => _isLoading = false);
+    try {
+      final batch = FirebaseFirestore.instance.batch();
+
+      final userRef = FirebaseFirestore.instance.collection('users').doc(userId);
+      batch.set(userRef, {
+        'first_name': _firstNameController.text.trim(),
+        'last_name': _lastNameController.text.trim(),
+        'phone': _phoneController.text.trim(),
+        'address': _addressController.text.trim(),
+        'city': _cityController.text.trim(),
+        'province': _provinceController.text.trim(),
+        'updated_at': FieldValue.serverTimestamp(),
+      }, SetOptions(merge: true));
+
+      if (widget.isHandyman) {
+        final hpRef = FirebaseFirestore.instance.collection('handymanProfiles').doc(userId);
+        batch.set(hpRef, {
+          'experience': int.tryParse(_experienceController.text.trim()) ?? 0,
+          'hourly_rate': double.tryParse(_hourlyRateController.text.trim()) ?? 0.0,
+          'updated_at': FieldValue.serverTimestamp(),
+        }, SetOptions(merge: true));
+      }
+
+      await batch.commit();
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(
-            content: Text('Profile updated successfully!'),
-            backgroundColor: AppColors.success,
-          ),
+          const SnackBar(content: Text('Profile updated successfully!'), backgroundColor: AppColors.success),
         );
-        Navigator.pop(context);
+        Navigator.pop(context, true);
       }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Update failed: $e'), backgroundColor: AppColors.error),
+        );
+      }
+    } finally {
+      if (mounted) setState(() => _isLoading = false);
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    if (_isFetching) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
+
     return Scaffold(
-      backgroundColor: AppColors.background,
+      backgroundColor: Colors.white,
       appBar: AppBar(
-        title: const Text('Edit Profile'),
+        title: const Text('Edit Profile', style: TextStyle(fontWeight: FontWeight.bold)),
         backgroundColor: Colors.white,
         foregroundColor: AppColors.textDark,
         elevation: 0,
@@ -84,209 +171,20 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           padding: const EdgeInsets.all(20),
           child: Column(
             children: [
-              // Profile Photo
-              Center(
-                child: Stack(
-                  children: [
-                    CircleAvatar(
-                      radius: 60,
-                      backgroundColor: AppColors.primary.withOpacity(0.1),
-                      child: const Text(
-                        'AP',
-                        style: TextStyle(
-                          fontSize: 36,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.primary,
-                        ),
-                      ),
-                    ),
-                    Positioned(
-                      bottom: 0,
-                      right: 0,
-                      child: Container(
-                        padding: const EdgeInsets.all(8),
-                        decoration: BoxDecoration(
-                          color: AppColors.primary,
-                          shape: BoxShape.circle,
-                          border: Border.all(color: Colors.white, width: 3),
-                        ),
-                        child: const Icon(
-                          Icons.camera_alt,
-                          color: Colors.white,
-                          size: 20,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
-              ),
+              _buildPhotoPicker(),
               const SizedBox(height: 32),
-
-              // Personal Information
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Personal Information',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textDark,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Expanded(
-                    child: CustomTextField(
-                      label: 'First Name',
-                      hint: 'John',
-                      prefixIcon: Icons.person_outline,
-                      controller: _firstNameController,
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Required';
-                        }
-                        return null;
-                      },
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: CustomTextField(
-                      label: 'Last Name',
-                      hint: 'Doe',
-                      prefixIcon: Icons.person_outline,
-                      controller: _lastNameController,
-                      validator: (value) {
-                        if (value == null || value.isEmpty) {
-                          return 'Required';
-                        }
-                        return null;
-                      },
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 20),
-              CustomTextField(
-                label: 'Email',
-                hint: 'john.doe@email.com',
-                prefixIcon: Icons.email_outlined,
-                controller: _emailController,
-                keyboardType: TextInputType.emailAddress,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter your email';
-                  }
-                  if (!value.contains('@')) {
-                    return 'Please enter a valid email';
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 20),
-              CustomTextField(
-                label: 'Phone',
-                hint: '077 123 4567',
-                prefixIcon: Icons.phone_outlined,
-                controller: _phoneController,
-                keyboardType: TextInputType.phone,
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return 'Please enter your phone number';
-                  }
-                  return null;
-                },
-              ),
+              _buildPersonalFields(),
               const SizedBox(height: 32),
-
-              // Address Information
-              const Align(
-                alignment: Alignment.centerLeft,
-                child: Text(
-                  'Address Information',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textDark,
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              CustomTextField(
-                label: 'Address',
-                hint: '123 Main Street',
-                prefixIcon: Icons.home_outlined,
-                controller: _addressController,
-              ),
-              const SizedBox(height: 20),
-              Row(
-                children: [
-                  Expanded(
-                    child: CustomTextField(
-                      label: 'City',
-                      hint: 'Kandy',
-                      prefixIcon: Icons.location_city,
-                      controller: _cityController,
-                    ),
-                  ),
-                  const SizedBox(width: 16),
-                  Expanded(
-                    child: CustomTextField(
-                      label: 'Province',
-                      hint: 'Central',
-                      prefixIcon: Icons.map_outlined,
-                      controller: _provinceController,
-                    ),
-                  ),
-                ],
-              ),
-
-              // Handyman Specific Fields
+              _buildAddressFields(),
               if (widget.isHandyman) ...[
                 const SizedBox(height: 32),
-                const Align(
-                  alignment: Alignment.centerLeft,
-                  child: Text(
-                    'Professional Information',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textDark,
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: CustomTextField(
-                        label: 'Experience (Years)',
-                        hint: '5',
-                        prefixIcon: Icons.work_outline,
-                        controller: _experienceController,
-                        keyboardType: TextInputType.number,
-                      ),
-                    ),
-                    const SizedBox(width: 16),
-                    Expanded(
-                      child: CustomTextField(
-                        label: 'Hourly Rate (Rs)',
-                        hint: '1500',
-                        prefixIcon: Icons.attach_money,
-                        controller: _hourlyRateController,
-                        keyboardType: TextInputType.number,
-                      ),
-                    ),
-                  ],
-                ),
+                _buildProfessionalFields(),
               ],
+              const SizedBox(height: 40),
 
-              const SizedBox(height: 32),
               CustomButton(
                 text: 'Save Changes',
-                onPressed: _saveProfile,
+                onPressed: _isLoading ? () {} : _saveProfile,
                 isLoading: _isLoading,
               ),
               const SizedBox(height: 20),
@@ -294,6 +192,144 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
           ),
         ),
       ),
+    );
+  }
+
+  Widget _buildPhotoPicker() {
+    return Center(
+      child: GestureDetector(
+        onTap: _pickImage,
+        child: Stack(
+          children: [
+            CircleAvatar(
+              radius: 60,
+              backgroundColor: AppColors.primary.withOpacity(0.1),
+              backgroundImage: _imageFile != null
+                  ? FileImage(_imageFile!)
+                  : (_existingProfileUrl != null ? NetworkImage(_existingProfileUrl!) as ImageProvider : null),
+              child: (_imageFile == null && _existingProfileUrl == null)
+                  ? Text(
+                _firstNameController.text.isNotEmpty ? _firstNameController.text[0].toUpperCase() : '?',
+                style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: AppColors.primary),
+              )
+                  : null,
+            ),
+            const Positioned(
+              bottom: 0,
+              right: 0,
+              child: CircleAvatar(
+                backgroundColor: AppColors.primary,
+                radius: 18,
+                child: Icon(Icons.camera_alt, color: Colors.white, size: 18),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildPersonalFields() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Personal Details', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 16),
+        CustomTextField(
+          label: 'First Name',
+          hint: 'Enter first name',
+          prefixIcon: Icons.person_outline,
+          controller: _firstNameController,
+          validator: (value) => value!.trim().isEmpty ? 'Required' : null,
+        ),
+        const SizedBox(height: 16),
+        CustomTextField(
+          label: 'Last Name',
+          hint: 'Enter last name',
+          prefixIcon: Icons.person_outline,
+          controller: _lastNameController,
+          validator: (value) => value!.trim().isEmpty ? 'Required' : null,
+        ),
+        const SizedBox(height: 16),
+        CustomTextField(
+          label: 'Phone',
+          hint: '07X XXX XXXX',
+          prefixIcon: Icons.phone_android,
+          controller: _phoneController,
+          keyboardType: TextInputType.phone,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildAddressFields() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Location Info', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 16),
+        CustomTextField(
+          label: 'Street Address',
+          hint: '123 Main St',
+          prefixIcon: Icons.location_on_outlined,
+          controller: _addressController,
+        ),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              child: CustomTextField(
+                label: 'City',
+                hint: 'Kandy',
+                prefixIcon: Icons.location_city,
+                controller: _cityController,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: CustomTextField(
+                label: 'Province',
+                hint: 'Central',
+                prefixIcon: Icons.map_outlined,
+                controller: _provinceController,
+              ),
+            ),
+          ],
+        ),
+      ],
+    );
+  }
+
+  Widget _buildProfessionalFields() {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text('Work Details', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+        const SizedBox(height: 16),
+        Row(
+          children: [
+            Expanded(
+              child: CustomTextField(
+                label: 'Experience',
+                hint: 'Years',
+                prefixIcon: Icons.timeline,
+                controller: _experienceController,
+                keyboardType: TextInputType.number,
+              ),
+            ),
+            const SizedBox(width: 12),
+            Expanded(
+              child: CustomTextField(
+                label: 'Rate',
+                hint: 'Rs/Hr',
+                prefixIcon: Icons.payments_outlined,
+                controller: _hourlyRateController,
+                keyboardType: TextInputType.number,
+              ),
+            ),
+          ],
+        ),
+      ],
     );
   }
 }

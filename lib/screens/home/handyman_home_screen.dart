@@ -1,35 +1,11 @@
-// ==========================================
-// FILE: lib/screens/home/handyman_home_screen.dart
-// ==========================================
 import 'package:flutter/material.dart';
-import '../../models/job_request_model.dart';
 import '../../models/booking_model.dart';
-import '../../widgets/job_request_card.dart';
-import '../../widgets/booking_card.dart';
-import '../../utils/colors.dart';
-import 'package:fixit_app/screens/home/customer_home_screen.dart';
-import 'package:fixit_app/screens/home/handyman_home_screen.dart';
-import '../profile/profile_screen.dart';
-
-import '../../widgets/job_request_details_bottom_sheet.dart';
-
-
-
-// ==========================================
-// FILE: lib/screens/home/handyman_home_screen.dart
-// FINAL COMPLETE VERSION WITH ALL FEATURES
-// ==========================================
-import 'package:flutter/material.dart';
-import '../../models/job_request_model.dart';
-import '../../models/booking_model.dart';
-import '../../widgets/job_request_card.dart';
-import '../../widgets/booking_card.dart';
+import '../../services/firestore_service.dart';
+import '../../services/auth_service.dart';
 import '../../utils/colors.dart';
 import '../profile/profile_screen.dart';
 import '../bookings/handyman_bookings_screen.dart';
 import '../notifications/notifications_screen.dart';
-import '../search/handyman_search_screen.dart';
-import '../../widgets/job_request_details_bottom_sheet.dart';
 
 class HandymanHomeScreen extends StatefulWidget {
   const HandymanHomeScreen({Key? key}) : super(key: key);
@@ -39,594 +15,264 @@ class HandymanHomeScreen extends StatefulWidget {
 }
 
 class _HandymanHomeScreenState extends State<HandymanHomeScreen> {
+  final _firestoreService = FirestoreService();
+  final _authService = AuthService();
+
   int _selectedIndex = 0;
   bool _isAvailable = true;
+  String? _userId;
+  Map<String, dynamic>? _userProfile;
+  Map<String, dynamic>? _handymanProfile;
 
-  // Mock notification count
-  int _unreadNotificationCount = 5;
-  int _unreadMessagesCount = 2;
+  @override
+  void initState() {
+    super.initState();
+    _loadProfiles();
+  }
 
-  // Mock data - Replace with API calls
-  final List<JobRequest> _jobRequests = [
-    JobRequest(
-      id: 1,
-      customerName: 'Amal Perera',
-      description: 'Fix leaking tap in kitchen. Water is dripping constantly.',
-      jobType: 'Plumbing',
-      location: 'Peradeniya Rd, Kandy',
-      isEmergency: true,
-      createdTime: DateTime.now().subtract(const Duration(hours: 2)),
-      deadline: DateTime.now().add(const Duration(hours: 6)),
-      status: 'Open',
-      offeredPrice: 1500,
-    ),
-    JobRequest(
-      id: 2,
-      customerName: 'Kamal Fernando',
-      description: 'Repair broken chair leg, need wood work',
-      jobType: 'Carpentry',
-      location: 'Temple St, Kandy',
-      isEmergency: false,
-      createdTime: DateTime.now().subtract(const Duration(hours: 5)),
-      deadline: DateTime.now().add(const Duration(days: 2)),
-      status: 'Open',
-      offeredPrice: 1200,
-    ),
-    JobRequest(
-      id: 3,
-      customerName: 'Chathura Dissanayake',
-      description: 'Install new light fixtures in living room',
-      jobType: 'Electrical',
-      location: 'Ampitiya Rd, Kandy',
-      isEmergency: false,
-      createdTime: DateTime.now().subtract(const Duration(hours: 8)),
-      deadline: DateTime.now().add(const Duration(days: 3)),
-      status: 'Open',
-      offeredPrice: 2000,
-    ),
-  ];
+  Future<void> _loadProfiles() async {
+    _userId = _authService.currentUserId;
+    if (_userId == null) return;
 
-  final List<Booking> _upcomingBookings = [
-    Booking(
-      id: 1,
-      customerName: 'Shanika Weerasinghe',
-      jobDescription: 'Deep clean apartment',
-      location: 'Kundasale Rd, Kandy',
-      scheduledStartTime: DateTime.now().add(const Duration(hours: 3)),
-      estimatedEndTime: DateTime.now().add(const Duration(hours: 6)),
-      status: 'Confirmed',
-      amount: 1200,
-    ),
-    Booking(
-      id: 2,
-      customerName: 'Harsha Bandara',
-      jobDescription: 'Paint living room walls',
-      location: 'Tennekumbura Rd, Kandy',
-      scheduledStartTime: DateTime.now().add(const Duration(days: 1)),
-      estimatedEndTime: DateTime.now().add(const Duration(days: 1, hours: 4)),
-      status: 'Confirmed',
-      amount: 3500,
-    ),
-  ];
+    try {
+      final user = await _firestoreService.getUserProfile(_userId!);
+      final handymanData = await _firestoreService.getHandymanProfileByUserId(_userId!);
+
+      if (mounted) {
+        setState(() {
+          _userProfile = user;
+          _handymanProfile = handymanData;
+          // In your DB, the handymanProfile ID is the same as the userId
+          _isAvailable = handymanData?['work_status'] == 'Available';
+        });
+      }
+    } catch (e) {
+      debugPrint("Error loading handyman profiles: $e");
+    }
+  }
+
+  Future<void> _toggleAvailability(bool value) async {
+    if (_userId == null) return;
+
+    setState(() => _isAvailable = value);
+
+    try {
+      await _firestoreService.updateHandymanProfile(_userId!, {
+        'work_status': value ? 'Available' : 'Offline',
+      });
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text(value ? '✅ You are now available' : '⛔ You are now offline'),
+            backgroundColor: value ? AppColors.success : AppColors.error,
+            behavior: SnackBarBehavior.floating,
+          ),
+        );
+      }
+    } catch (e) {
+      setState(() => _isAvailable = !value);
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      }
+    }
+  }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       backgroundColor: AppColors.background,
-      body: SafeArea(
-        child: _selectedIndex == 0
-            ? _buildHomeTab()
-            : _selectedIndex == 1
-            ? const HandymanBookingsScreen()
-            : _selectedIndex == 2
-            ? const NotificationsScreen()
-            : const ProfileScreen(isHandyman: true),
-      ),
+      body: _getSelectedScreen(),
       bottomNavigationBar: _buildBottomNavigationBar(),
     );
   }
 
+  Widget _getSelectedScreen() {
+    switch (_selectedIndex) {
+      case 0: return _buildHomeTab();
+      case 1: return const HandymanBookingsScreen();
+      case 2: return const NotificationsScreen();
+      case 3: return const ProfileScreen(isHandyman: true);
+      default: return _buildHomeTab();
+    }
+  }
+
   Widget _buildHomeTab() {
-    return SingleChildScrollView(
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          // Header with gradient
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: const BoxDecoration(
-              gradient: LinearGradient(
-                begin: Alignment.topLeft,
-                end: Alignment.bottomRight,
-                colors: [AppColors.primary, AppColors.secondary],
-              ),
-              borderRadius: BorderRadius.only(
-                bottomLeft: Radius.circular(24),
-                bottomRight: Radius.circular(24),
-              ),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                  children: [
-                    const Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(
-                            'Welcome Back! 👋',
-                            style: TextStyle(
-                              fontSize: 24,
-                              fontWeight: FontWeight.bold,
-                              color: Colors.white,
-                            ),
-                          ),
-                          SizedBox(height: 4),
-                          Text(
-                            'Ready to help customers today?',
-                            style: TextStyle(
-                              fontSize: 14,
-                              color: Colors.white70,
-                            ),
-                          ),
-                        ],
-                      ),
-                    ),
-                    Row(
-                      children: [
-                        Stack(
-                          children: [
-                            CircleAvatar(
-                              radius: 20,
-                              backgroundColor: Colors.white.withOpacity(0.2),
-                              child: IconButton(
-                                icon: const Icon(
-                                  Icons.search,
-                                  color: Colors.white,
-                                  size: 20,
-                                ),
-                                padding: EdgeInsets.zero,
-                                onPressed: () {
-                                  Navigator.push(
-                                    context,
-                                    MaterialPageRoute(
-                                      builder: (_) => const HandymanSearchScreen(),
-                                    ),
-                                  );
-                                },
-                              ),
-                            ),
-                          ],
-                        ),
-                        const SizedBox(width: 8),
-                        Stack(
-                          children: [
-                            CircleAvatar(
-                              radius: 20,
-                              backgroundColor: Colors.white.withOpacity(0.2),
-                              child: IconButton(
-                                icon: const Icon(
-                                  Icons.notifications_outlined,
-                                  color: Colors.white,
-                                  size: 20,
-                                ),
-                                padding: EdgeInsets.zero,
-                                onPressed: () {
-                                  setState(() => _selectedIndex = 2);
-                                },
-                              ),
-                            ),
-                            if (_unreadNotificationCount > 0)
-                              Positioned(
-                                right: 0,
-                                top: 0,
-                                child: Container(
-                                  padding: const EdgeInsets.all(4),
-                                  decoration: const BoxDecoration(
-                                    color: Colors.red,
-                                    shape: BoxShape.circle,
-                                  ),
-                                  constraints: const BoxConstraints(
-                                    minWidth: 16,
-                                    minHeight: 16,
-                                  ),
-                                  child: Text(
-                                    '$_unreadNotificationCount',
-                                    style: const TextStyle(
-                                      color: Colors.white,
-                                      fontSize: 9,
-                                      fontWeight: FontWeight.bold,
-                                    ),
-                                    textAlign: TextAlign.center,
-                                  ),
-                                ),
-                              ),
-                          ],
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 20),
-
-                // Availability Toggle
-                Container(
-                  padding: const EdgeInsets.all(16),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Row(
-                    children: [
-                      Icon(
-                        _isAvailable ? Icons.check_circle : Icons.cancel,
-                        color: Colors.white,
-                      ),
-                      const SizedBox(width: 12),
-                      const Expanded(
-                        child: Text(
-                          'Work Status',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: Colors.white,
-                          ),
-                        ),
-                      ),
-                      Switch(
-                        value: _isAvailable,
-                        onChanged: (value) {
-                          setState(() => _isAvailable = value);
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            SnackBar(
-                              content: Text(
-                                value
-                                    ? '✅ You are now available for jobs'
-                                    : '⛔ You are now unavailable',
-                              ),
-                              backgroundColor: value
-                                  ? AppColors.success
-                                  : AppColors.error,
-                              behavior: SnackBarBehavior.floating,
-                              margin: const EdgeInsets.all(20),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(10),
-                              ),
-                            ),
-                          );
-                        },
-                        activeColor: AppColors.success,
-                        inactiveThumbColor: Colors.white,
-                      ),
-                    ],
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-
-          // Stats Cards
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Row(
-              children: [
-                _buildStatCard(
-                  '15',
-                  'Jobs Done',
-                  Icons.check_circle,
-                  AppColors.success,
-                ),
-                const SizedBox(width: 12),
-                _buildStatCard(
-                  'Rs 45,000',
-                  'This Month',
-                  Icons.attach_money,
-                  AppColors.primary,
-                ),
-                const SizedBox(width: 12),
-                _buildStatCard(
-                  '4.8',
-                  'Rating',
-                  Icons.star,
-                  AppColors.accent,
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 24),
-
-          // Upcoming Bookings
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'Upcoming Bookings',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textDark,
-                  ),
-                ),
-                TextButton(
-                  onPressed: () {
-                    setState(() => _selectedIndex = 1);
-                  },
-                  child: const Text('See All'),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          _upcomingBookings.isEmpty
-              ? Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Container(
-              padding: const EdgeInsets.all(32),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-              ),
-              child: const Center(
-                child: Column(
-                  children: [
-                    Icon(
-                      Icons.calendar_today_outlined,
-                      size: 48,
-                      color: AppColors.textLight,
-                    ),
-                    SizedBox(height: 16),
-                    Text(
-                      'No upcoming bookings',
-                      style: TextStyle(
-                        fontSize: 16,
-                        color: AppColors.textLight,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ),
-          )
-              : ListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            itemCount: _upcomingBookings.length > 2 ? 2 : _upcomingBookings.length,
-            itemBuilder: (context, index) {
-              return BookingCard(
-                booking: _upcomingBookings[index],
-                onTap: () {
-                  // Navigate to booking details
-                  setState(() => _selectedIndex = 1);
-                },
-              );
-            },
-          ),
-          const SizedBox(height: 24),
-
-          // New Job Requests
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.spaceBetween,
-              children: [
-                const Text(
-                  'New Job Requests',
-                  style: TextStyle(
-                    fontSize: 18,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textDark,
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: AppColors.error,
-                    borderRadius: BorderRadius.circular(12),
-                  ),
-                  child: Text(
-                    '${_jobRequests.length}',
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontSize: 12,
-                      fontWeight: FontWeight.bold,
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 12),
-
-          ListView.builder(
-            shrinkWrap: true,
-            physics: const NeverScrollableScrollPhysics(),
-            padding: const EdgeInsets.symmetric(horizontal: 20),
-            itemCount: _jobRequests.length > 3 ? 3 : _jobRequests.length,
-            itemBuilder: (context, index) {
-              return JobRequestCard(
-                jobRequest: _jobRequests[index],
-                onTap: () {
-                  _showJobRequestDetails(context, _jobRequests[index]);
-                },
-              );
-            },
-          ),
-          const SizedBox(height: 20),
+    return RefreshIndicator(
+      onRefresh: _loadProfiles,
+      child: CustomScrollView(
+        slivers: [
+          _buildHeader(),
+          _buildStatsRow(),
+          _buildSectionHeader('Upcoming Bookings', () => setState(() => _selectedIndex = 1)),
+          _buildBookingsStream(),
+          const SliverToBoxAdapter(child: SizedBox(height: 100)),
         ],
       ),
     );
   }
 
-  Widget _buildStatCard(String value, String label, IconData icon, Color color) {
-    return Expanded(
+  Widget _buildHeader() {
+    return SliverToBoxAdapter(
       child: Container(
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
+        padding: const EdgeInsets.all(20),
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(colors: [AppColors.primary, AppColors.secondary]),
+          borderRadius: BorderRadius.vertical(bottom: Radius.circular(24)),
         ),
-        child: Column(
+        child: SafeArea(
+          bottom: false,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text('Welcome Back! 👋', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
+              Text(_userProfile?['first_name'] ?? 'Handyman', style: const TextStyle(fontSize: 18, color: Colors.white70)),
+              const SizedBox(height: 20),
+              _buildAvailabilitySwitch(),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAvailabilitySwitch() {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 8),
+      decoration: BoxDecoration(color: Colors.white.withOpacity(0.2), borderRadius: BorderRadius.circular(12)),
+      child: Row(
+        children: [
+          Icon(_isAvailable ? Icons.check_circle : Icons.cancel, color: Colors.white),
+          const SizedBox(width: 12),
+          const Expanded(child: Text('Online Status', style: TextStyle(fontWeight: FontWeight.bold, color: Colors.white))),
+          Switch(
+            value: _isAvailable,
+            onChanged: _toggleAvailability,
+            activeColor: AppColors.success,
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildStatsRow() {
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Row(
           children: [
-            Icon(icon, color: color, size: 24),
-            const SizedBox(height: 8),
-            Text(
-              value,
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.bold,
-                color: AppColors.textDark,
-              ),
-              textAlign: TextAlign.center,
-            ),
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 10,
-                color: AppColors.textLight,
-              ),
-              textAlign: TextAlign.center,
-            ),
+            _buildStatCard('${_handymanProfile?['total_jobs_completed'] ?? 0}', 'Jobs Done', Icons.check_circle, AppColors.success),
+            const SizedBox(width: 12),
+            _buildStatCard('Rs ${(_handymanProfile?['hourly_rate'] ?? 0).toStringAsFixed(0)}', 'Rate/hr', Icons.payments, AppColors.primary),
+            const SizedBox(width: 12),
+            _buildStatCard('${(_handymanProfile?['rating_avg'] ?? 0.0).toStringAsFixed(1)}', 'Rating', Icons.star, Colors.amber),
           ],
         ),
       ),
+    );
+  }
+
+  Widget _buildBookingsStream() {
+    if (_userId == null) return const SliverToBoxAdapter(child: SizedBox());
+
+    return StreamBuilder<List<Booking>>(
+      stream: _firestoreService.getHandymanBookings(_userId!),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) return const SliverToBoxAdapter(child: Center(child: CircularProgressIndicator()));
+
+        final bookings = snapshot.data!.where((b) => b.status == 'Confirmed' || b.status == 'Pending').toList();
+
+        if (bookings.isEmpty) {
+          return SliverToBoxAdapter(child: _buildEmptyState());
+        }
+
+        return SliverList(
+          delegate: SliverChildBuilderDelegate(
+                (context, index) => _buildBookingCard(bookings[index]),
+            childCount: bookings.length > 3 ? 3 : bookings.length,
+          ),
+        );
+      },
+    );
+  }
+
+  Widget _buildBookingCard(Booking booking) {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              Text(booking.serviceName, style: const TextStyle(fontWeight: FontWeight.bold)),
+              Text(booking.status, style: TextStyle(color: booking.status == 'Confirmed' ? AppColors.success : Colors.orange, fontSize: 12)),
+            ],
+          ),
+          const SizedBox(height: 8),
+          Text(booking.customerName, style: const TextStyle(color: AppColors.textLight)),
+        ],
+      ),
+    );
+  }
+
+  // Helper Widgets
+  Widget _buildStatCard(String val, String label, IconData icon, Color color) {
+    return Expanded(
+      child: Container(
+        padding: const EdgeInsets.symmetric(vertical: 16),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(12)),
+        child: Column(
+          children: [
+            Icon(icon, color: color, size: 24),
+            Text(val, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            Text(label, style: const TextStyle(fontSize: 10, color: AppColors.textLight)),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildSectionHeader(String title, VoidCallback onTap) {
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 20),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+          children: [
+            Text(title, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            TextButton(onPressed: onTap, child: const Text('See All')),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildEmptyState() {
+    return Padding(
+      padding: const EdgeInsets.all(20),
+      child: Center(child: Text('No upcoming jobs', style: TextStyle(color: AppColors.textLight))),
     );
   }
 
   Widget _buildBottomNavigationBar() {
-    return Container(
-      decoration: BoxDecoration(
-        color: Colors.white,
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, -5),
-          ),
-        ],
-      ),
-      child: BottomNavigationBar(
-        currentIndex: _selectedIndex,
-        onTap: (index) {
-          setState(() => _selectedIndex = index);
-        },
-        type: BottomNavigationBarType.fixed,
-        selectedItemColor: AppColors.primary,
-        unselectedItemColor: AppColors.textLight,
-        selectedFontSize: 12,
-        unselectedFontSize: 12,
-        elevation: 0,
-        backgroundColor: Colors.transparent,
-        items: [
-          const BottomNavigationBarItem(
-            icon: Icon(Icons.home_outlined),
-            activeIcon: Icon(Icons.home),
-            label: 'Home',
-          ),
-          const BottomNavigationBarItem(
-            icon: Icon(Icons.work_outline),
-            activeIcon: Icon(Icons.work),
-            label: 'My Jobs',
-          ),
-          BottomNavigationBarItem(
-            icon: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                const Icon(Icons.notifications_outlined),
-                if (_unreadNotificationCount > 0)
-                  Positioned(
-                    right: -6,
-                    top: -6,
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: const BoxDecoration(
-                        color: Colors.red,
-                        shape: BoxShape.circle,
-                      ),
-                      constraints: const BoxConstraints(
-                        minWidth: 16,
-                        minHeight: 16,
-                      ),
-                      child: Text(
-                        '$_unreadNotificationCount',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            activeIcon: Stack(
-              clipBehavior: Clip.none,
-              children: [
-                const Icon(Icons.notifications),
-                if (_unreadNotificationCount > 0)
-                  Positioned(
-                    right: -6,
-                    top: -6,
-                    child: Container(
-                      padding: const EdgeInsets.all(4),
-                      decoration: const BoxDecoration(
-                        color: Colors.red,
-                        shape: BoxShape.circle,
-                      ),
-                      constraints: const BoxConstraints(
-                        minWidth: 16,
-                        minHeight: 16,
-                      ),
-                      child: Text(
-                        '$_unreadNotificationCount',
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontSize: 10,
-                          fontWeight: FontWeight.bold,
-                        ),
-                        textAlign: TextAlign.center,
-                      ),
-                    ),
-                  ),
-              ],
-            ),
-            label: 'Notifications',
-          ),
-          const BottomNavigationBarItem(
-            icon: Icon(Icons.person_outline),
-            activeIcon: Icon(Icons.person),
-            label: 'Profile',
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showJobRequestDetails(BuildContext context, JobRequest jobRequest) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => JobRequestDetailsBottomSheet(jobRequest: jobRequest),
+    return BottomNavigationBar(
+      currentIndex: _selectedIndex,
+      onTap: (index) => setState(() => _selectedIndex = index),
+      type: BottomNavigationBarType.fixed,
+      selectedItemColor: AppColors.primary,
+      items: const [
+        BottomNavigationBarItem(icon: Icon(Icons.home), label: 'Home'),
+        BottomNavigationBarItem(icon: Icon(Icons.calendar_month), label: 'Jobs'),
+        BottomNavigationBarItem(icon: Icon(Icons.notifications), label: 'Alerts'),
+        BottomNavigationBarItem(icon: Icon(Icons.person), label: 'Profile'),
+      ],
     );
   }
 }

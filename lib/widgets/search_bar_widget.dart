@@ -1,19 +1,18 @@
-// ==========================================
-// FILE: lib/widgets/search_bar_widget.dart
-// ==========================================
 import 'package:flutter/material.dart';
 import '../utils/colors.dart';
 
 class SearchBarWidget extends StatelessWidget {
   final TextEditingController controller;
-  final VoidCallback? onFilterTap;
   final String hint;
+  final Function(String)? onChanged;
+  final VoidCallback? onFilterTap; // Added this to fix the undefined error
 
   const SearchBarWidget({
     Key? key,
     required this.controller,
-    this.onFilterTap,
-    this.hint = 'Search services or handymen...',
+    this.hint = 'Search...',
+    this.onChanged,
+    this.onFilterTap, // Allow the screen to handle filter button taps
   }) : super(key: key);
 
   @override
@@ -32,6 +31,7 @@ class SearchBarWidget extends StatelessWidget {
           Expanded(
             child: TextField(
               controller: controller,
+              onChanged: onChanged, // FIX: This connects the UI to your logic
               decoration: InputDecoration(
                 hintText: hint,
                 hintStyle: const TextStyle(
@@ -42,6 +42,7 @@ class SearchBarWidget extends StatelessWidget {
               ),
             ),
           ),
+          // FIX: Only show the filter icon if a function is provided
           if (onFilterTap != null)
             IconButton(
               icon: const Icon(Icons.tune, color: AppColors.primary),

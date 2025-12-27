@@ -13,9 +13,10 @@ class CustomTextField extends StatelessWidget {
   final TextInputType keyboardType;
   final String? Function(String?)? validator;
   final Widget? suffixIcon;
+  final int? maxLines;
 
   const CustomTextField({
-    Key? key,
+    super.key,
     required this.label,
     required this.hint,
     required this.prefixIcon,
@@ -24,7 +25,8 @@ class CustomTextField extends StatelessWidget {
     this.keyboardType = TextInputType.text,
     this.validator,
     this.suffixIcon,
-  }) : super(key: key);
+    this.maxLines,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -45,6 +47,7 @@ class CustomTextField extends StatelessWidget {
           obscureText: obscureText,
           keyboardType: keyboardType,
           validator: validator,
+          maxLines: obscureText ? 1 : (maxLines ?? 1),
           decoration: InputDecoration(
             hintText: hint,
             prefixIcon: Icon(prefixIcon, color: AppColors.primary),

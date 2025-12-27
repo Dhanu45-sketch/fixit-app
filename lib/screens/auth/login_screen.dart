@@ -1,45 +1,17 @@
-// ==========================================
-// 6. screens/auth/login_screen.dart
-// ==========================================
 import 'package:flutter/material.dart';
-import '../../models/handyman_model.dart';
-import '../../widgets/custom_button.dart';
-import '../../utils/colors.dart';
-import '../../widgets/booking_bottom_sheet.dart';
-import 'package:flutter/material.dart';
-import '../../models/service_category_model.dart';
-import '../../models/handyman_model.dart';
-import '../../widgets/handyman_card.dart';
-import '../../widgets/search_bar_widget.dart';
-import '../../utils/colors.dart';
-import '../handyman/handyman_detail_screen.dart';
-import 'package:flutter/material.dart';
-import '../../models/service_category_model.dart';
-import '../../models/handyman_model.dart';
-import '../../widgets/category_card.dart';
-import '../../widgets/handyman_card.dart';
-import '../../widgets/search_bar_widget.dart';
-import '../../utils/colors.dart';
-import 'package:fixit_app/screens/auth/role_selection_screen.dart';
-import 'package:fixit_app/screens/auth/register_screen.dart';
-import '../services/service_detail_screen.dart';
-import '../handyman/handyman_detail_screen.dart';
-import '../../widgets/custom_textfield.dart';
-
-
-// ==========================================
-// FILE: lib/screens/auth/login_screen.dart
-// PREFILLED VERSION FOR TESTING
-// ==========================================
-import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../utils/colors.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/custom_textfield.dart';
+import '../../services/auth_service.dart';
 import 'register_screen.dart';
-import 'role_selection_screen.dart';
+import '../home/customer_home_screen.dart';
+import '../home/handyman_home_screen.dart';
 
 class LoginScreen extends StatefulWidget {
-  const LoginScreen({Key? key}) : super(key: key);
+  final bool isHandyman;
+
+  const LoginScreen({Key? key, required this.isHandyman}) : super(key: key);
 
   @override
   State<LoginScreen> createState() => _LoginScreenState();
@@ -47,13 +19,14 @@ class LoginScreen extends StatefulWidget {
 
 class _LoginScreenState extends State<LoginScreen> {
   final _formKey = GlobalKey<FormState>();
+  final _authService = AuthService();
 
-  // PREFILLED WITH DUMMY DATA FOR TESTING
-  final _emailController = TextEditingController(text: 'test@fixit.com');
-  final _passwordController = TextEditingController(text: 'password123');
+  final _emailController = TextEditingController();
+  final _passwordController = TextEditingController();
 
   bool _obscurePassword = true;
   bool _isLoading = false;
+  String? _errorMessage;
 
   @override
   void dispose() {
@@ -63,105 +36,124 @@ class _LoginScreenState extends State<LoginScreen> {
   }
 
   Future<void> _handleLogin() async {
-    if (_formKey.currentState!.validate()) {
-      setState(() => _isLoading = true);
+    if (!(_formKey.currentState?.validate() ?? false)) return;
 
-      // Simulate API call
-      await Future.delayed(const Duration(seconds: 1));
+    setState(() {
+      _isLoading = true;
+      _errorMessage = null;
+    });
 
-      setState(() => _isLoading = false);
+    try {
+      // 1. Firebase Auth Sign In
+      await _authService.signIn(
+        email: _emailController.text.trim(),
+        password: _passwordController.text,
+      );
 
-      // Navigate to role selection
+      // 2. Profile and Role Verification
+      final userProfile = await _authService.getCurrentUserProfile();
+
+      if (userProfile == null) {
+        await _authService.signOut(); // Sign out to prevent inconsistent state
+        if (mounted) {
+          setState(() => _errorMessage = "User profile not found. Please register.");
+        }
+        return;
+      }
+
+      final bool isHandymanProfile = userProfile['is_handyman'] ?? false;
+      if (isHandymanProfile != widget.isHandyman) {
+        await _authService.signOut();
+        final portalType = isHandymanProfile ? 'Handyman' : 'Customer';
+        if (mounted) {
+          setState(() => _errorMessage = "Incorrect login portal. Use the $portalType login.");
+        }
+        return;
+      }
+
+      // 3. Navigate to the correct home screen
       if (mounted) {
-        Navigator.of(context).pushReplacement(
-          MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
+        final homeScreen =
+        isHandymanProfile ? const HandymanHomeScreen() : const CustomerHomeScreen();
+
+        Navigator.of(context).pushAndRemoveUntil(
+          MaterialPageRoute(builder: (context) => homeScreen),
+              (route) => false, // Clears the navigation stack
         );
+      }
+    } on FirebaseAuthException catch (e) {
+      String message;
+      switch (e.code) {
+        case 'user-not-found':
+        case 'invalid-credential':
+        case 'wrong-password':
+          message = 'Invalid email or password.';
+          break;
+        default:
+          message = 'Login failed. Please try again.';
+      }
+      if (mounted) {
+        setState(() => _errorMessage = message);
+      }
+    } catch (e) {
+      if (mounted) {
+        setState(() => _errorMessage = 'An unexpected error occurred.');
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
       }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final themeColor = widget.isHandyman ? AppColors.secondary : AppColors.primary;
+
     return Scaffold(
+      appBar: AppBar(
+        backgroundColor: Colors.transparent,
+        elevation: 0,
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back, color: AppColors.textDark),
+          onPressed: () => Navigator.pop(context),
+        ),
+      ),
       body: SafeArea(
         child: SingleChildScrollView(
-          padding: const EdgeInsets.all(24.0),
+          padding: const EdgeInsets.symmetric(horizontal: 24.0),
           child: Form(
             key: _formKey,
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const SizedBox(height: 40),
-                const Icon(
-                  Icons.build_circle,
+                const SizedBox(height: 20),
+                Icon(
+                  widget.isHandyman ? Icons.handyman : Icons.person,
                   size: 64,
-                  color: AppColors.primary,
+                  color: themeColor,
                 ),
                 const SizedBox(height: 24),
-                const Text(
-                  'Welcome Back!',
-                  style: TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                    color: AppColors.textDark,
-                  ),
+                Text(
+                  widget.isHandyman ? 'Handyman Login' : 'Customer Login',
+                  style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: AppColors.textDark),
                 ),
                 const SizedBox(height: 8),
-                const Text(
-                  'Sign in to continue',
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: AppColors.textLight,
-                  ),
+                Text(
+                  'Sign in to your ${widget.isHandyman ? 'pro' : ''} account',
+                  style: const TextStyle(fontSize: 16, color: AppColors.textLight),
                 ),
-                const SizedBox(height: 8),
-                // TESTING NOTE-----------------------------------------------
-                Container(
-                  padding: const EdgeInsets.all(12),
-                  decoration: BoxDecoration(
-                    color: AppColors.primary.withOpacity(0.1),
-                    borderRadius: BorderRadius.circular(8),
-                    border: Border.all(
-                      color: AppColors.primary.withOpacity(0.3),
-                    ),
-                  ),
-                  child: Row(
-                    children: [
-                      const Icon(
-                        Icons.info_outline,
-                        color: AppColors.primary,
-                        size: 20,
-                      ),
-                      const SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Testing Mode: Fields are prefilled. Just tap Sign In!',
-                          style: TextStyle(
-                            fontSize: 12,
-                            color: AppColors.primary.withOpacity(0.8),
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                //----------------------------------------------------------
                 const SizedBox(height: 32),
+
+                if (_errorMessage != null) _buildErrorBox(),
+
                 CustomTextField(
                   label: 'Email',
                   hint: 'Enter your email',
                   prefixIcon: Icons.email_outlined,
                   controller: _emailController,
                   keyboardType: TextInputType.emailAddress,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter your email';
-                    }
-                    if (!value.contains('@')) {
-                      return 'Please enter a valid email';
-                    }
-                    return null;
-                  },
+                  validator: (value) => (value == null || value.isEmpty) ? 'Please enter your email' : null,
                 ),
                 const SizedBox(height: 20),
                 CustomTextField(
@@ -170,75 +162,23 @@ class _LoginScreenState extends State<LoginScreen> {
                   prefixIcon: Icons.lock_outline,
                   controller: _passwordController,
                   obscureText: _obscurePassword,
-                  validator: (value) {
-                    if (value == null || value.isEmpty) {
-                      return 'Please enter your password';
-                    }
-                    if (value.length < 6) {
-                      return 'Password must be at least 6 characters';
-                    }
-                    return null;
-                  },
+                  validator: (value) => (value == null || value.isEmpty) ? 'Please enter your password' : null,
                   suffixIcon: IconButton(
-                    icon: Icon(
-                      _obscurePassword ? Icons.visibility_off : Icons.visibility,
-                      color: AppColors.textLight,
-                    ),
-                    onPressed: () {
-                      setState(() => _obscurePassword = !_obscurePassword);
-                    },
+                    icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility, color: AppColors.textLight),
+                    onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
                   ),
                 ),
-                const SizedBox(height: 12),
-                Align(
-                  alignment: Alignment.centerRight,
-                  child: TextButton(
-                    onPressed: () {
-                      ScaffoldMessenger.of(context).showSnackBar(
-                        const SnackBar(
-                          content: Text('Forgot password feature coming soon!'),
-                        ),
-                      );
-                    },
-                    child: const Text(
-                      'Forgot Password?',
-                      style: TextStyle(
-                        color: AppColors.primary,
-                        fontWeight: FontWeight.w600,
-                      ),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 24),
+                const SizedBox(height: 32),
+
+                // FIXED SECTION: Correctly handling the loading state for the button
                 CustomButton(
                   text: 'Sign In',
-                  onPressed: _handleLogin,
                   isLoading: _isLoading,
+                  onPressed: _isLoading ? () {} : _handleLogin,
                 ),
+
                 const SizedBox(height: 24),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Text(
-                      "Don't have an account? ",
-                      style: TextStyle(color: AppColors.textLight),
-                    ),
-                    TextButton(
-                      onPressed: () {
-                        Navigator.of(context).push(
-                          MaterialPageRoute(builder: (_) => const RegisterScreen()),
-                        );
-                      },
-                      child: const Text(
-                        'Sign Up',
-                        style: TextStyle(
-                          color: AppColors.primary,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
+                _buildSignUpRow(themeColor),
               ],
             ),
           ),
@@ -246,18 +186,38 @@ class _LoginScreenState extends State<LoginScreen> {
       ),
     );
   }
+
+  Widget _buildErrorBox() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: 20),
+      decoration: BoxDecoration(
+        color: Colors.red.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.red.shade200),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.error_outline, color: Colors.red.shade700),
+          const SizedBox(width: 8),
+          Expanded(child: Text(_errorMessage!, style: TextStyle(color: Colors.red.shade700, fontWeight: FontWeight.w500))),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSignUpRow(Color themeColor) {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        const Text("Don't have an account? ", style: TextStyle(color: AppColors.textLight)),
+        TextButton(
+          onPressed: () => Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => RegisterScreen(isHandyman: widget.isHandyman)),
+          ),
+          child: Text('Sign Up', style: TextStyle(color: themeColor, fontWeight: FontWeight.w600)),
+        ),
+      ],
+    );
+  }
 }
-
-// ==========================================
-// ALSO UPDATE REGISTER SCREEN (OPTIONAL)
-// ==========================================
-/*
-If you want to prefill the register screen too, update these lines:
-
-final _firstNameController = TextEditingController(text: 'John');
-final _lastNameController = TextEditingController(text: 'Doe');
-final _emailController = TextEditingController(text: 'john.doe@test.com');
-final _phoneController = TextEditingController(text: '0771234567');
-final _passwordController = TextEditingController(text: 'password123');
-final _confirmPasswordController = TextEditingController(text: 'password123');
-*/

@@ -54,7 +54,7 @@ class BookingDetailScreen extends StatelessWidget {
                     radius: 40,
                     backgroundColor: AppColors.primary.withOpacity(0.1),
                     child: Text(
-                      booking.handymanName[0],
+                      booking.handymanName.isNotEmpty ? booking.handymanName[0] : '?',
                       style: const TextStyle(
                         fontSize: 32,
                         fontWeight: FontWeight.bold,
@@ -131,12 +131,12 @@ class BookingDetailScreen extends StatelessWidget {
                   _buildInfoRow(
                     Icons.calendar_today,
                     'Date',
-                    '${booking.scheduledDate.day}/${booking.scheduledDate.month}/${booking.scheduledDate.year}',
+                    booking.scheduledDateString,
                   ),
                   _buildInfoRow(
                     Icons.access_time,
                     'Time',
-                    booking.scheduledTime,
+                    booking.scheduledTimeString,
                   ),
                   _buildInfoRow(
                     Icons.schedule,
@@ -257,6 +257,7 @@ class BookingDetailScreen extends StatelessWidget {
                     Expanded(
                       child: CustomButton(
                         text: 'Contact',
+                        isLoading: false,
                         onPressed: () {
                           ScaffoldMessenger.of(context).showSnackBar(
                             const SnackBar(content: Text('Chat feature coming soon!')),
@@ -273,6 +274,7 @@ class BookingDetailScreen extends StatelessWidget {
                 padding: const EdgeInsets.symmetric(horizontal: 20),
                 child: CustomButton(
                   text: 'Rate Service',
+                  isLoading: false,
                   onPressed: () {
                     _showRatingDialog(context);
                   },

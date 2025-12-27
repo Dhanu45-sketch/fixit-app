@@ -1,40 +1,6 @@
-// ==========================================
-// 8. screens/auth/role_selection_screen.dart
-// ==========================================
-import 'package:fixit_app/screens/home/customer_home_screen.dart';
-import 'package:flutter/material.dart';
-import '../../models/handyman_model.dart';
-import '../../widgets/custom_button.dart';
-import '../../utils/colors.dart';
-import '../../widgets/booking_bottom_sheet.dart';
-import 'package:flutter/material.dart';
-import '../../models/service_category_model.dart';
-import '../../models/handyman_model.dart';
-import '../../widgets/category_card.dart';
-import '../../widgets/handyman_card.dart';
-import '../../widgets/search_bar_widget.dart';
-import '../../utils/colors.dart';
-import 'package:fixit_app/screens/auth/role_selection_screen.dart';
-import 'package:fixit_app/screens/auth/register_screen.dart';
-import 'package:fixit_app/screens/auth/login_screen.dart';
-import '../services/service_detail_screen.dart';
-import '../handyman/handyman_detail_screen.dart';
-import '../../widgets/custom_textfield.dart';
-import 'package:fixit_app/screens/home/customer_home_screen.dart';
-import 'package:fixit_app/screens/home/handyman_home_screen.dart';
-import '../services/service_detail_screen.dart';
-import '../handyman/handyman_detail_screen.dart';
-
-
-
-// ==========================================
-// FILE: lib/screens/auth/role_selection_screen.dart
-// ==========================================
 import 'package:flutter/material.dart';
 import '../../utils/colors.dart';
-import '../home/customer_home_screen.dart';
-import '../home/handyman_home_screen.dart';
-import 'login_screen.dart';
+import 'login_screen.dart'; // Assuming your login screen is here
 
 class RoleSelectionScreen extends StatelessWidget {
   const RoleSelectionScreen({Key? key}) : super(key: key);
@@ -42,141 +8,105 @@ class RoleSelectionScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [AppColors.primary, AppColors.secondary],
-          ),
-        ),
-        child: SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.all(24.0),
-            child: Column(
-              children: [
-                const SizedBox(height: 40),
-                const Text(
-                  'Choose Your Role',
-                  style: TextStyle(
-                    fontSize: 32,
-                    fontWeight: FontWeight.bold,
-                    color: Colors.white,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                const Text(
-                  'How would you like to use FixIt?',
-                  style: TextStyle(
-                    fontSize: 16,
-                    color: Colors.white70,
-                  ),
-                  textAlign: TextAlign.center,
-                ),
-                const SizedBox(height: 60),
-                Expanded(
-                  child: Column(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      _RoleCard(
-                        icon: Icons.person_outline,
-                        title: 'I need services',
-                        subtitle: 'Find and book handymen for your needs',
-                        color: Colors.white,
-                        onTap: () {
-                          Navigator.pushReplacement(
-                            context,
-                            MaterialPageRoute(builder: (_) => const CustomerHomeScreen()),
-                          );
-                        },
-                      ),
-                      const SizedBox(height: 24),
-                      _RoleCard(
-                        icon: Icons.build_outlined,
-                        title: 'I provide services',
-                        subtitle: 'Offer your skills and get hired',
-                        color: Colors.white,
-                        onTap: () {
-                          Navigator.pushReplacement(
-                            context,
-                            MaterialPageRoute(builder: (_) => const HandymanHomeScreen()),
-                          );
-                        },
-                      ),
-                    ],
-                  ),
-                ),
-                TextButton(
-                  onPressed: () {
-                    Navigator.pushReplacement(
-                      context,
-                      MaterialPageRoute(builder: (_) => const LoginScreen()),
-                    );
-                  },
-                  child: const Text(
-                    'Logout',
-                    style: TextStyle(
-                      color: Colors.white,
-                      fontSize: 16,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ),
-              ],
+      body: Stack(
+        children: [
+          // Background Gradient
+          Container(
+            decoration: const BoxDecoration(
+              gradient: LinearGradient(
+                begin: Alignment.topCenter,
+                end: Alignment.bottomCenter,
+                colors: [AppColors.primary, AppColors.secondary],
+              ),
             ),
           ),
-        ),
+          SafeArea(
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 30),
+              child: Column(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  const Icon(Icons.build_circle, size: 80, color: Colors.white),
+                  const SizedBox(height: 20),
+                  const Text(
+                    "Welcome to FixIt",
+                    style: TextStyle(
+                        fontSize: 28,
+                        fontWeight: FontWeight.bold,
+                        color: Colors.white
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  const Text(
+                    "Please select how you want to continue",
+                    textAlign: TextAlign.center,
+                    style: TextStyle(fontSize: 16, color: Colors.white70),
+                  ),
+                  const SizedBox(height: 50),
+
+                  // Customer Selection Card
+                  _buildRoleCard(
+                    context,
+                    title: "I am a Customer",
+                    subtitle: "I want to find a handyman",
+                    icon: Icons.person_search,
+                    isHandyman: false,
+                  ),
+
+                  const SizedBox(height: 20),
+
+                  // Handyman Selection Card
+                  _buildRoleCard(
+                    context,
+                    title: "I am a Handyman",
+                    subtitle: "I want to provide services",
+                    icon: Icons.handyman,
+                    isHandyman: true,
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
-}
 
-class _RoleCard extends StatelessWidget {
-  final IconData icon;
-  final String title;
-  final String subtitle;
-  final Color color;
-  final VoidCallback onTap;
-
-  const _RoleCard({
-    Key? key,
-    required this.icon,
-    required this.title,
-    required this.subtitle,
-    required this.color,
-    required this.onTap,
-  }) : super(key: key);
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
+  Widget _buildRoleCard(BuildContext context, {
+    required String title,
+    required String subtitle,
+    required IconData icon,
+    required bool isHandyman
+  }) {
+    return InkWell(
+      onTap: () {
+        // Navigate to login, passing the role so the LoginScreen knows which side to show
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => LoginScreen(isHandyman: isHandyman),
+          ),
+        );
+      },
       child: Container(
-        padding: const EdgeInsets.all(24),
+        padding: const EdgeInsets.all(20),
         decoration: BoxDecoration(
-          color: color,
+          color: Colors.white,
           borderRadius: BorderRadius.circular(20),
           boxShadow: [
             BoxShadow(
               color: Colors.black.withOpacity(0.1),
-              blurRadius: 20,
-              offset: const Offset(0, 10),
-            ),
+              blurRadius: 10,
+              offset: const Offset(0, 5),
+            )
           ],
         ),
         child: Row(
           children: [
-            Container(
-              padding: const EdgeInsets.all(16),
-              decoration: BoxDecoration(
-                color: AppColors.primary.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(12),
-              ),
-              child: Icon(
-                icon,
-                size: 40,
-                color: AppColors.primary,
-              ),
+            CircleAvatar(
+              radius: 25,
+              backgroundColor: AppColors.primary.withOpacity(0.1),
+              child: Icon(icon, color: AppColors.primary),
             ),
             const SizedBox(width: 20),
             Expanded(
@@ -186,26 +116,19 @@ class _RoleCard extends StatelessWidget {
                   Text(
                     title,
                     style: const TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textDark,
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textDark
                     ),
                   ),
-                  const SizedBox(height: 4),
                   Text(
                     subtitle,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: AppColors.textLight,
-                    ),
+                    style: const TextStyle(fontSize: 14, color: AppColors.textLight),
                   ),
                 ],
               ),
             ),
-            const Icon(
-              Icons.arrow_forward_ios,
-              color: AppColors.primary,
-            ),
+            const Icon(Icons.arrow_forward_ios, size: 16, color: AppColors.textLight),
           ],
         ),
       ),

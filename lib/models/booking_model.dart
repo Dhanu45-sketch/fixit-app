@@ -1,39 +1,63 @@
-// ==========================================
-// FILE: lib/models/booking_model.dart
-// ==========================================
+import 'package:cloud_firestore/cloud_firestore.dart';
+
 class Booking {
-  final int id;
+  final String id;
+  final String customerId;
+  final String handymanId;
   final String customerName;
-  final String jobDescription;
-  final String location;
+  final String serviceName;
+  final String status; // Pending, Confirmed, Rejected, In Progress, Completed, Cancelled
   final DateTime scheduledStartTime;
-  final DateTime? estimatedEndTime;
-  final String status;
-  final double amount;
+  final double totalPrice;
+  final String notes;
+  final String address;
+  final bool isEmergency;
 
   Booking({
     required this.id,
+    required this.customerId,
+    required this.handymanId,
     required this.customerName,
-    required this.jobDescription,
-    required this.location,
-    required this.scheduledStartTime,
-    this.estimatedEndTime,
+    required this.serviceName,
     required this.status,
-    required this.amount,
+    required this.scheduledStartTime,
+    required this.totalPrice,
+    required this.notes,
+    required this.address,
+    this.isEmergency = false,
   });
 
-  factory Booking.fromJson(Map<String, dynamic> json) {
+  // Convert Firestore Document to Booking Object
+  factory Booking.fromFirestore(DocumentSnapshot doc) {
+    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
     return Booking(
-      id: json['booking_id'],
-      customerName: json['customer_name'],
-      jobDescription: json['job_description'],
-      location: json['location'],
-      scheduledStartTime: DateTime.parse(json['scheduled_start_time']),
-      estimatedEndTime: json['estimated_end_time'] != null
-          ? DateTime.parse(json['estimated_end_time'])
-          : null,
-      status: json['status'],
-      amount: json['amount']?.toDouble() ?? 0.0,
+      id: doc.id,
+      customerId: data['customer_id'] ?? '',
+      handymanId: data['handyman_id'] ?? '',
+      customerName: data['customer_name'] ?? 'Customer',
+      serviceName: data['service_name'] ?? 'Service',
+      status: data['status'] ?? 'Pending',
+      scheduledStartTime: (data['scheduled_start_time'] as Timestamp).toDate(),
+      totalPrice: (data['total_price'] ?? 0).toDouble(),
+      notes: data['notes'] ?? '',
+      address: data['address'] ?? 'No Address',
+      isEmergency: data['is_emergency'] ?? false,
     );
+  }
+
+  // Convert Booking Object to Map for saving to Firestore
+  Map<String, dynamic> toMap() {
+    return {
+      'customer_id': customerId,
+      'handyman_id': handymanId,
+      'customer_name': customerName,
+      'service_name': serviceName,
+      'status': status,
+      'scheduled_start_time': Timestamp.fromDate(scheduledStartTime),
+      'total_price': totalPrice,
+      'notes': notes,
+      'address': address,
+      'is_emergency': isEmergency,
+    };
   }
 }

@@ -1,18 +1,15 @@
-// ==========================================
-// FILE: lib/screens/handyman/handyman_detail_screen.dart
-// ==========================================
 import 'package:flutter/material.dart';
-import '../../models/handyman_model.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../widgets/custom_button.dart';
 import '../../utils/colors.dart';
 import '../../widgets/booking_bottom_sheet.dart';
 
 class HandymanDetailScreen extends StatefulWidget {
-  final Handyman handyman;
+  final String handymanId;
 
   const HandymanDetailScreen({
     Key? key,
-    required this.handyman,
+    required this.handymanId,
   }) : super(key: key);
 
   @override
@@ -20,242 +17,173 @@ class HandymanDetailScreen extends StatefulWidget {
 }
 
 class _HandymanDetailScreenState extends State<HandymanDetailScreen> {
-  final List<Map<String, dynamic>> _reviews = [
-    {
-      'reviewer': 'Amal Perera',
-      'rating': 5,
-      'comment': 'Great service! Very professional and completed the work on time.',
-      'date': '2 days ago',
-    },
-    {
-      'reviewer': 'Kamal Fernando',
-      'rating': 4,
-      'comment': 'Fixed the issue quickly. Could improve timing.',
-      'date': '1 week ago',
-    },
-    {
-      'reviewer': 'Chathura Dissanayake',
-      'rating': 5,
-      'comment': 'Excellent work quality. Highly recommend!',
-      'date': '2 weeks ago',
-    },
-  ];
-
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      backgroundColor: AppColors.background,
-      body: CustomScrollView(
-        slivers: [
-          SliverAppBar(
-            expandedHeight: 280,
-            pinned: true,
-            backgroundColor: AppColors.primary,
-            flexibleSpace: FlexibleSpaceBar(
-              background: Container(
-                decoration: const BoxDecoration(
-                  gradient: LinearGradient(
-                    begin: Alignment.topLeft,
-                    end: Alignment.bottomRight,
-                    colors: [AppColors.primary, AppColors.secondary],
-                  ),
+    return StreamBuilder<DocumentSnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('handymanProfiles')
+          .doc(widget.handymanId)
+          .snapshots(),
+      builder: (context, snapshot) {
+        if (!snapshot.hasData) {
+          return const Scaffold(body: Center(child: CircularProgressIndicator()));
+        }
+
+        if (!snapshot.data!.exists) {
+          return const Scaffold(body: Center(child: Text("Profile not found")));
+        }
+
+        final hData = snapshot.data!.data() as Map<String, dynamic>;
+
+        return FutureBuilder<DocumentSnapshot>(
+          future: FirebaseFirestore.instance.collection('users').doc(widget.handymanId).get(),
+          builder: (context, userSnap) {
+            if (userSnap.connectionState == ConnectionState.waiting) {
+              return const Scaffold(body: Center(child: CircularProgressIndicator()));
+            }
+
+            final uData = userSnap.data?.data() as Map<String, dynamic>?;
+            final String firstName = uData?['first_name'] ?? 'Handyman';
+            final String lastName = uData?['last_name'] ?? '';
+            final String fullName = "$firstName $lastName";
+
+            return Scaffold(
+              backgroundColor: AppColors.background,
+              body: CustomScrollView(
+                slivers: [
+                  _buildHeader(fullName, hData),
+                  _buildStatsRow(hData),
+                  _buildAboutSection(hData, uData ?? {}),
+                  _buildReviewSection(),
+                  const SliverToBoxAdapter(child: SizedBox(height: 100)),
+                ],
+              ),
+              bottomNavigationBar: _buildBottomBar(context, hData, fullName),
+            );
+          },
+        );
+      },
+    );
+  }
+
+  // ... (Header, StatsRow, AboutSection, and ReviewSection remain the same as your provided code)
+
+  Widget _buildHeader(String name, Map<String, dynamic> data) {
+    return SliverAppBar(
+      expandedHeight: 250,
+      pinned: true,
+      backgroundColor: AppColors.primary,
+      flexibleSpace: FlexibleSpaceBar(
+        background: Container(
+          decoration: const BoxDecoration(
+            gradient: LinearGradient(
+              begin: Alignment.topCenter,
+              end: Alignment.bottomCenter,
+              colors: [AppColors.primary, AppColors.secondary],
+            ),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              const SizedBox(height: 40),
+              CircleAvatar(
+                radius: 45,
+                backgroundColor: Colors.white,
+                child: Text(
+                  name.isNotEmpty ? name[0].toUpperCase() : 'H',
+                  style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: AppColors.primary),
                 ),
-                child: Column(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const SizedBox(height: 60),
-                    CircleAvatar(
-                      radius: 50,
-                      backgroundColor: Colors.white,
-                      child: Text(
-                        widget.handyman.firstName[0] + widget.handyman.lastName[0],
-                        style: const TextStyle(
-                          fontSize: 36,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.primary,
-                        ),
-                      ),
-                    ),
-                    const SizedBox(height: 16),
-                    Text(
-                      widget.handyman.fullName,
-                      style: const TextStyle(
-                        fontSize: 24,
-                        fontWeight: FontWeight.bold,
-                        color: Colors.white,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      widget.handyman.categoryName,
-                      style: const TextStyle(
-                        fontSize: 16,
-                        color: Colors.white70,
-                      ),
-                    ),
-                    const SizedBox(height: 12),
-                    Container(
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 6,
-                      ),
-                      decoration: BoxDecoration(
-                        color: widget.handyman.workStatus == 'Available'
-                            ? AppColors.success
-                            : AppColors.error,
-                        borderRadius: BorderRadius.circular(20),
-                      ),
-                      child: Text(
-                        widget.handyman.workStatus,
-                        style: const TextStyle(
-                          color: Colors.white,
-                          fontWeight: FontWeight.w600,
-                          fontSize: 12,
-                        ),
-                      ),
-                    ),
-                  ],
-                ),
               ),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Row(
-                children: [
-                  _buildStatCard(
-                    widget.handyman.rating.toStringAsFixed(1),
-                    'Rating',
-                    Icons.star,
-                    AppColors.accent,
-                  ),
-                  const SizedBox(width: 12),
-                  _buildStatCard(
-                    '${widget.handyman.totalJobs}',
-                    'Jobs Done',
-                    Icons.work,
-                    AppColors.success,
-                  ),
-                  const SizedBox(width: 12),
-                  _buildStatCard(
-                    '${widget.handyman.experience}',
-                    'Years Exp',
-                    Icons.trending_up,
-                    AppColors.primary,
-                  ),
-                ],
+              const SizedBox(height: 12),
+              Text(
+                name,
+                style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold, color: Colors.white),
               ),
-            ),
-          ),
-          SliverToBoxAdapter(
-            child: Container(
-              margin: const EdgeInsets.symmetric(horizontal: 20),
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
+              Text(
+                data['category_name'] ?? 'Specialist',
+                style: const TextStyle(color: Colors.white70, fontSize: 16),
               ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'About',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textDark,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  _buildInfoRow(Icons.location_on, widget.handyman.city ?? 'Kandy'),
-                  _buildInfoRow(Icons.attach_money, 'Rs ${widget.handyman.hourlyRate.toStringAsFixed(0)} per hour'),
-                  _buildInfoRow(Icons.work_outline, '${widget.handyman.experience} years of experience'),
-                  _buildInfoRow(Icons.verified, 'Verified Professional'),
-                ],
-              ),
-            ),
+            ],
           ),
-          SliverToBoxAdapter(
-            child: Padding(
-              padding: const EdgeInsets.all(20),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Reviews',
-                        style: TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.textDark,
-                        ),
-                      ),
-                      TextButton(
-                        onPressed: () {},
-                        child: const Text('See All'),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 12),
-                  ...(_reviews.map((review) => _buildReviewCard(review)).toList()),
-                ],
-              ),
-            ),
-          ),
-          const SliverToBoxAdapter(
-            child: SizedBox(height: 100),
-          ),
-        ],
+        ),
       ),
-      bottomNavigationBar: _buildBottomBar(context),
+    );
+  }
+
+  Widget _buildStatsRow(Map<String, dynamic> data) {
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Row(
+          children: [
+            _buildStatCard((data['rating_avg'] ?? 0.0).toStringAsFixed(1), 'Rating', Icons.star, AppColors.accent),
+            const SizedBox(width: 12),
+            _buildStatCard('${data['jobs_completed'] ?? 0}', 'Jobs', Icons.work, AppColors.success),
+            const SizedBox(width: 12),
+            _buildStatCard('${data['experience'] ?? 0}', 'Years', Icons.trending_up, AppColors.primary),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildAboutSection(Map<String, dynamic> hData, Map<String, dynamic> uData) {
+    return SliverToBoxAdapter(
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 20),
+        padding: const EdgeInsets.all(20),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Professional Info', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 16),
+            if (hData['bio'] != null && hData['bio'].toString().isNotEmpty) ...[
+              Text(hData['bio'], style: const TextStyle(color: AppColors.textLight)),
+              const SizedBox(height: 16),
+            ],
+            _buildInfoRow(Icons.location_on, uData['phone'] ?? 'Contact via app'),
+            const SizedBox(height: 12),
+            _buildInfoRow(Icons.attach_money, 'Rs ${(hData['hourly_rate'] ?? 0).toString()}/hr'),
+            const SizedBox(height: 12),
+            _buildInfoRow(Icons.verified, 'Verified Service Provider'),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildReviewSection() {
+    return SliverToBoxAdapter(
+      child: Padding(
+        padding: const EdgeInsets.all(20),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text('Recent Reviews', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            const SizedBox(height: 12),
+            const Text('No reviews yet', style: TextStyle(color: AppColors.textLight)),
+          ],
+        ),
+      ),
     );
   }
 
   Widget _buildStatCard(String value, String label, IconData icon, Color color) {
     return Expanded(
       child: Container(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.symmetric(vertical: 16),
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(12),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.02), blurRadius: 10)],
         ),
         child: Column(
           children: [
-            Icon(icon, color: color, size: 28),
-            const SizedBox(height: 8),
-            Text(
-              value,
-              style: const TextStyle(
-                fontSize: 20,
-                fontWeight: FontWeight.bold,
-                color: AppColors.textDark,
-              ),
-            ),
-            Text(
-              label,
-              style: const TextStyle(
-                fontSize: 11,
-                color: AppColors.textLight,
-              ),
-              textAlign: TextAlign.center,
-            ),
+            Icon(icon, color: color, size: 24),
+            const SizedBox(height: 4),
+            Text(value, style: const TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            Text(label, style: const TextStyle(fontSize: 10, color: AppColors.textLight)),
           ],
         ),
       ),
@@ -263,144 +191,60 @@ class _HandymanDetailScreenState extends State<HandymanDetailScreen> {
   }
 
   Widget _buildInfoRow(IconData icon, String text) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 12),
-      child: Row(
-        children: [
-          Icon(icon, size: 20, color: AppColors.primary),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Text(
-              text,
-              style: const TextStyle(
-                fontSize: 14,
-                color: AppColors.textDark,
-              ),
-            ),
-          ),
-        ],
-      ),
+    return Row(
+      children: [
+        Icon(icon, size: 20, color: AppColors.primary),
+        const SizedBox(width: 12),
+        Text(text, style: const TextStyle(fontSize: 15, color: AppColors.textDark)),
+      ],
     );
   }
 
-  Widget _buildReviewCard(Map<String, dynamic> review) {
-    return Container(
-      margin: const EdgeInsets.only(bottom: 12),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(12),
-        boxShadow: [
-          BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, 4),
-          ),
-        ],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Text(
-                review['reviewer'],
-                style: const TextStyle(
-                  fontSize: 14,
-                  fontWeight: FontWeight.w600,
-                  color: AppColors.textDark,
-                ),
-              ),
-              Row(
-                children: List.generate(
-                  5,
-                      (index) => Icon(
-                    index < review['rating'] ? Icons.star : Icons.star_border,
-                    size: 16,
-                    color: Colors.amber,
-                  ),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          Text(
-            review['comment'],
-            style: const TextStyle(
-              fontSize: 13,
-              color: AppColors.textLight,
-            ),
-          ),
-          const SizedBox(height: 8),
-          Text(
-            review['date'],
-            style: const TextStyle(
-              fontSize: 11,
-              color: AppColors.textLight,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
+  // FIXED BOTTOM BAR TO MATCH CUSTOM BUTTON
+  Widget _buildBottomBar(BuildContext context, Map<String, dynamic> hData, String fullName) {
+    final double rate = (hData['hourly_rate'] is int)
+        ? (hData['hourly_rate'] as int).toDouble()
+        : (hData['hourly_rate'] ?? 0.0).toDouble();
 
-  Widget _buildBottomBar(BuildContext context) {
+    final String category = hData['category_name'] ?? 'Service';
+    final bool isAvailable = hData['work_status'] == "Available";
+
     return Container(
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
         boxShadow: [
           BoxShadow(
-            color: Colors.black.withOpacity(0.05),
-            blurRadius: 10,
-            offset: const Offset(0, -5),
-          ),
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, -5)
+          )
         ],
       ),
       child: SafeArea(
-        child: Row(
-          children: [
-            Container(
-              width: 56,
-              height: 56,
-              decoration: BoxDecoration(
-                color: AppColors.background,
-                borderRadius: BorderRadius.circular(12),
+        child: CustomButton(
+          text: isAvailable ? 'Book Now' : 'Not Available',
+          // If not available, we pass a dummy function that does nothing or null.
+          // Since your CustomButton uses onPressed == null to disable, we do this:
+          onPressed: isAvailable
+              ? () {
+            showModalBottomSheet(
+              context: context,
+              isScrollControlled: true,
+              backgroundColor: Colors.transparent,
+              builder: (sheetContext) => BookingBottomSheet(
+                handymanId: widget.handymanId,
+                handymanName: fullName,
+                hourlyRate: rate,
+                serviceName: category,
               ),
-              child: IconButton(
-                icon: const Icon(Icons.chat_bubble_outline),
-                color: AppColors.primary,
-                onPressed: () {
-                  ScaffoldMessenger.of(context).showSnackBar(
-                    const SnackBar(content: Text('Chat feature coming soon!')),
-                  );
-                },
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: CustomButton(
-                text: 'Book Now - Rs ${widget.handyman.hourlyRate.toStringAsFixed(0)}/hr',
-                onPressed: () {
-                  _showBookingBottomSheet(context);
-                },
-              ),
-            ),
-          ],
+            );
+          }
+              : () {}, // Or pass null if you want it to look visually disabled (greyed out)
+          // Matching the styling of your CustomButton
+          backgroundColor: isAvailable ? AppColors.primary : Colors.grey,
         ),
       ),
-    );
-  }
-
-  void _showBookingBottomSheet(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      isScrollControlled: true,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => BookingBottomSheet(handyman: widget.handyman),
     );
   }
 }
