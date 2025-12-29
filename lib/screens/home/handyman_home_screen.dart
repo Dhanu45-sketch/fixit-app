@@ -92,7 +92,7 @@ class _HandymanHomeScreenState extends State<HandymanHomeScreen> {
       case 0: return _buildHomeTab();
       case 1: return const HandymanBookingsScreen();
       case 2: return const NotificationsScreen();
-      case 3: return const ProfileScreen(isHandyman: true);
+      case 3: return const ProfileScreen();
       default: return _buildHomeTab();
     }
   }
@@ -132,8 +132,7 @@ class _HandymanHomeScreenState extends State<HandymanHomeScreen> {
             ],
           ),
         ),
-      ),
-    );
+      ),);
   }
 
   Widget _buildAvailabilitySwitch() {

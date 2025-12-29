@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:firebase_auth/firebase_auth.dart';
 import '../../services/auth_service.dart';
 import '../../services/firestore_service.dart';
 import '../../utils/colors.dart';
 import '../auth/role_selection_screen.dart';
-import 'edit_profile_screen.dart'; // Import the edit screen
+import 'edit_profile_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
   final bool isHandyman;
@@ -30,7 +31,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     _loadProfileData();
   }
 
-  // Reloads data from Firestore
   Future<void> _loadProfileData() async {
     setState(() => _isLoading = true);
     final userId = _authService.currentUserId;
@@ -45,7 +45,6 @@ class _ProfileScreenState extends State<ProfileScreen> {
     }
   }
 
-  // Navigates to edit screen and refreshes on return
   Future<void> _navigateToEdit() async {
     final result = await Navigator.push(
       context,
@@ -55,27 +54,69 @@ class _ProfileScreenState extends State<ProfileScreen> {
     );
 
     if (result == true) {
-      _loadProfileData(); // Refresh UI if data was saved
+      _loadProfileData();
+    }
+  }
+
+  Future<void> _handleLogout() async {
+    // Show confirmation dialog
+    final bool? confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Logout'),
+        content: const Text('Are you sure you want to logout?'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, false),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, true),
+            style: TextButton.styleFrom(foregroundColor: AppColors.error),
+            child: const Text('Logout'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true) {
+      try {
+        await _authService.signOut();
+
+        if (mounted) {
+          // Clear the entire navigation stack and go to role selection
+          Navigator.of(context).pushAndRemoveUntil(
+            MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
+                (route) => false,
+          );
+        }
+      } catch (e) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(
+              content: Text('Logout failed: $e'),
+              backgroundColor: AppColors.error,
+            ),
+          );
+        }
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
     return Scaffold(
+      backgroundColor: AppColors.background,
       appBar: AppBar(
-        title: const Text('My Profile'),
+        title: const Text('My Profile', style: TextStyle(fontWeight: FontWeight.bold)),
+        backgroundColor: Colors.white,
+        foregroundColor: AppColors.textDark,
+        elevation: 0,
         actions: [
           IconButton(
-            icon: const Icon(Icons.logout),
-            onPressed: () async {
-              await _authService.signOut();
-              if (mounted) {
-                Navigator.of(context).pushAndRemoveUntil(
-                  MaterialPageRoute(builder: (_) => const RoleSelectionScreen()),
-                      (route) => false,
-                );
-              }
-            },
+            icon: const Icon(Icons.logout, color: AppColors.error),
+            tooltip: 'Logout',
+            onPressed: _handleLogout,
           ),
         ],
       ),
@@ -87,20 +128,35 @@ class _ProfileScreenState extends State<ProfileScreen> {
           children: [
             Stack(
               children: [
-                const CircleAvatar(
+                CircleAvatar(
                   radius: 50,
-                  backgroundColor: AppColors.primary,
-                  child: Icon(Icons.person, size: 50, color: Colors.white),
+                  backgroundColor: AppColors.primary.withOpacity(0.1),
+                  backgroundImage: _userData?['profile_image'] != null
+                      ? NetworkImage(_userData!['profile_image'])
+                      : null,
+                  child: _userData?['profile_image'] == null
+                      ? Text(
+                    _userData?['first_name']?.toString()[0].toUpperCase() ?? '?',
+                    style: const TextStyle(
+                      fontSize: 40,
+                      fontWeight: FontWeight.bold,
+                      color: AppColors.primary,
+                    ),
+                  )
+                      : null,
                 ),
                 Positioned(
                   bottom: 0,
                   right: 0,
                   child: GestureDetector(
                     onTap: _navigateToEdit,
-                    child: const CircleAvatar(
-                      backgroundColor: Colors.white,
-                      radius: 15,
-                      child: Icon(Icons.edit, size: 15, color: AppColors.primary),
+                    child: Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: const BoxDecoration(
+                        color: AppColors.primary,
+                        shape: BoxShape.circle,
+                      ),
+                      child: const Icon(Icons.edit, size: 16, color: Colors.white),
                     ),
                   ),
                 ),
@@ -111,25 +167,77 @@ class _ProfileScreenState extends State<ProfileScreen> {
               '${_userData?['first_name'] ?? 'User'} ${_userData?['last_name'] ?? ''}',
               style: const TextStyle(fontSize: 22, fontWeight: FontWeight.bold),
             ),
-            Text(_userData?['email'] ?? 'No email provided'),
+            const SizedBox(height: 4),
+            Text(
+              _userData?['email'] ?? 'No email provided',
+              style: const TextStyle(color: AppColors.textLight),
+            ),
             const SizedBox(height: 30),
 
-            // Conditional UI based on Role
             if (widget.isHandyman) ...[
-              _buildProfileItem(Icons.work, 'Business Settings', 'Update rates & category', () {}),
-              _buildProfileItem(Icons.history, 'Earnings History', 'View your income', () {}),
+              _buildProfileItem(
+                Icons.work,
+                'Business Settings',
+                'Update rates & category',
+                _navigateToEdit,
+              ),
+              _buildProfileItem(
+                Icons.verified,
+                'My Certificates',
+                'View uploaded documents',
+                _navigateToEdit,
+              ),
+              _buildProfileItem(
+                Icons.history,
+                'Earnings History',
+                'View your income',
+                    () {},
+              ),
             ] else ...[
-              _buildProfileItem(Icons.favorite, 'Saved Handymen', 'Your favorite pros', () {}),
-              _buildProfileItem(Icons.location_on, 'My Addresses', 'Manage service locations', () {}),
+              _buildProfileItem(
+                Icons.favorite,
+                'Saved Handymen',
+                'Your favorite pros',
+                    () {},
+              ),
+              _buildProfileItem(
+                Icons.location_on,
+                'My Addresses',
+                'Manage service locations',
+                    () {},
+              ),
             ],
 
             _buildProfileItem(
               Icons.settings,
               'Account Settings',
               'Privacy and security',
-              _navigateToEdit, // Link to Edit Profile
+              _navigateToEdit,
             ),
-            _buildProfileItem(Icons.help_outline, 'Support', 'Get help with FixIt', () {}),
+            _buildProfileItem(
+              Icons.help_outline,
+              'Support',
+              'Get help with FixIt',
+                  () {},
+            ),
+
+            const SizedBox(height: 20),
+
+            // Logout Button as a list tile for consistency
+            Card(
+              margin: const EdgeInsets.only(bottom: 12),
+              shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+              child: ListTile(
+                leading: const Icon(Icons.logout, color: AppColors.error),
+                title: const Text(
+                  'Logout',
+                  style: TextStyle(fontWeight: FontWeight.bold, color: AppColors.error),
+                ),
+                subtitle: const Text('Sign out of your account'),
+                trailing: const Icon(Icons.chevron_right, color: AppColors.error),
+                onTap: _handleLogout,
+              ),
+            ),
           ],
         ),
       ),

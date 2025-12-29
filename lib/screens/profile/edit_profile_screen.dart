@@ -1,47 +1,51 @@
+
 import 'dart:io';
 import 'package:flutter/material.dart';
-import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:cached_network_image/cached_network_image.dart';
+import 'package:fixit_app/services/auth_service.dart';
+import 'package:fixit_app/services/firestore_service.dart';
+import 'package:fixit_app/services/storage_service.dart';
 import '../../utils/colors.dart';
-import '../../widgets/custom_textfield.dart';
 import '../../widgets/custom_button.dart';
-import '../../services/auth_service.dart';
+import '../../widgets/custom_textfield.dart';
 
 class EditProfileScreen extends StatefulWidget {
   final bool isHandyman;
 
-  const EditProfileScreen({
-    Key? key,
-    this.isHandyman = false,
-  }) : super(key: key);
+  const EditProfileScreen({super.key, this.isHandyman = false});
 
   @override
   State<EditProfileScreen> createState() => _EditProfileScreenState();
 }
 
 class _EditProfileScreenState extends State<EditProfileScreen> {
-  final _formKey = GlobalKey<FormState>();
   final _authService = AuthService();
-  final _picker = ImagePicker();
+  final _firestoreService = FirestoreService();
+  final _storageService = StorageService();
+  final _formKey = GlobalKey<FormState>();
 
+  // Common controllers
   final _firstNameController = TextEditingController();
   final _lastNameController = TextEditingController();
   final _phoneController = TextEditingController();
   final _addressController = TextEditingController();
-  final _cityController = TextEditingController();
-  final _provinceController = TextEditingController();
+
+  // Handyman specific controllers
+  final _bioController = TextEditingController();
   final _experienceController = TextEditingController();
   final _hourlyRateController = TextEditingController();
 
-  bool _isLoading = false;
-  bool _isFetching = true;
-  File? _imageFile;
-  String? _existingProfileUrl;
+  String? _profileImageUrl;
+  File? _newProfileImage;
+  bool _isLoading = true;
+  bool _isUploading = false;
+  String? _userId;
 
   @override
   void initState() {
     super.initState();
-    _loadCurrentUserData();
+    _loadAllUserData();
   }
 
   @override
@@ -50,286 +54,246 @@ class _EditProfileScreenState extends State<EditProfileScreen> {
     _lastNameController.dispose();
     _phoneController.dispose();
     _addressController.dispose();
-    _cityController.dispose();
-    _provinceController.dispose();
+    _bioController.dispose();
     _experienceController.dispose();
     _hourlyRateController.dispose();
     super.dispose();
   }
 
-  Future<void> _loadCurrentUserData() async {
-    final userId = _authService.currentUserId;
-    if (userId == null) return;
+  Future<void> _loadAllUserData() async {
+    setState(() => _isLoading = true);
+    _userId = _authService.currentUserId;
+    if (_userId == null) {
+      if (mounted) setState(() => _isLoading = false);
+      return;
+    }
 
     try {
-      final userDoc = await FirebaseFirestore.instance.collection('users').doc(userId).get();
-      if (userDoc.exists && mounted) {
-        final data = userDoc.data()!;
+      final results = await Future.wait([
+        _firestoreService.getUserProfile(_userId!),
+        if (widget.isHandyman) _firestoreService.getHandymanProfileByUserId(_userId!)
+      ]);
+
+      final user = results[0] as Map<String, dynamic>?;
+      final handymanProfile = widget.isHandyman ? results[1] as Map<String, dynamic>? : null;
+
+      if (user != null && mounted) {
         setState(() {
-          _firstNameController.text = data['first_name'] ?? '';
-          _lastNameController.text = data['last_name'] ?? '';
-          _phoneController.text = data['phone'] ?? '';
-          _addressController.text = data['address'] ?? '';
-          _cityController.text = data['city'] ?? '';
-          _provinceController.text = data['province'] ?? '';
-          _existingProfileUrl = data['profile_image'];
+          _firstNameController.text = user['first_name'] ?? '';
+          _lastNameController.text = user['last_name'] ?? '';
+          _phoneController.text = user['phone'] ?? '';
+          _addressController.text = user['address'] ?? '';
+          _profileImageUrl = user['profile_image'];
+
+          if (widget.isHandyman && handymanProfile != null) {
+            _bioController.text = handymanProfile['bio'] ?? '';
+            _experienceController.text = (handymanProfile['experience'] ?? 0).toString();
+            _hourlyRateController.text = (handymanProfile['hourly_rate'] ?? 0.0).toString();
+          }
         });
       }
-
-      if (widget.isHandyman && mounted) {
-        final hpDoc = await FirebaseFirestore.instance.collection('handymanProfiles').doc(userId).get();
-        if (hpDoc.exists) {
-          final hpData = hpDoc.data()!;
-          setState(() {
-            _experienceController.text = hpData['experience']?.toString() ?? '0';
-            _hourlyRateController.text = hpData['hourly_rate']?.toString() ?? '0';
-          });
-        }
-      }
     } catch (e) {
-      debugPrint("Error fetching profile: $e");
-    } finally {
-      if (mounted) setState(() => _isFetching = false);
-    }
-  }
-
-  Future<void> _pickImage() async {
-    final pickedFile = await _picker.pickImage(source: ImageSource.gallery, imageQuality: 70);
-    if (pickedFile != null) {
-      setState(() {
-        _imageFile = File(pickedFile.path);
-      });
-    }
-  }
-
-  Future<void> _saveProfile() async {
-    if (!_formKey.currentState!.validate()) return;
-
-    setState(() => _isLoading = true);
-    final userId = _authService.currentUserId;
-    if (userId == null) return;
-
-    try {
-      final batch = FirebaseFirestore.instance.batch();
-
-      final userRef = FirebaseFirestore.instance.collection('users').doc(userId);
-      batch.set(userRef, {
-        'first_name': _firstNameController.text.trim(),
-        'last_name': _lastNameController.text.trim(),
-        'phone': _phoneController.text.trim(),
-        'address': _addressController.text.trim(),
-        'city': _cityController.text.trim(),
-        'province': _provinceController.text.trim(),
-        'updated_at': FieldValue.serverTimestamp(),
-      }, SetOptions(merge: true));
-
-      if (widget.isHandyman) {
-        final hpRef = FirebaseFirestore.instance.collection('handymanProfiles').doc(userId);
-        batch.set(hpRef, {
-          'experience': int.tryParse(_experienceController.text.trim()) ?? 0,
-          'hourly_rate': double.tryParse(_hourlyRateController.text.trim()) ?? 0.0,
-          'updated_at': FieldValue.serverTimestamp(),
-        }, SetOptions(merge: true));
-      }
-
-      await batch.commit();
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Profile updated successfully!'), backgroundColor: AppColors.success),
-        );
-        Navigator.pop(context, true);
-      }
-    } catch (e) {
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Update failed: $e'), backgroundColor: AppColors.error),
-        );
-      }
+      debugPrint('Error loading user data: $e');
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }
   }
 
-  @override
-  Widget build(BuildContext context) {
-    if (_isFetching) {
-      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+  Future<void> _pickProfileImage() async {
+    File? imageFile;
+    final source = await showDialog<ImageSource>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('Select Image Source'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context, ImageSource.camera),
+            child: const Text('Camera'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(context, ImageSource.gallery),
+            child: const Text('Gallery'),
+          ),
+        ],
+      ),
+    );
+
+    if (source == null) return;
+
+    if (source == ImageSource.camera) {
+      imageFile = await _storageService.pickImageFromCamera();
+    } else {
+      imageFile = await _storageService.pickImageFromGallery();
     }
 
+    if (imageFile != null) {
+      setState(() => _newProfileImage = imageFile);
+    }
+  }
+
+  Future<void> _saveProfile() async {
+    if (!_formKey.currentState!.validate()) return;
+    if (_userId == null) return;
+
+    setState(() => _isUploading = true);
+
+    try {
+      String? imageUrl = _profileImageUrl;
+      if (_newProfileImage != null) {
+        final uploadedUrl = await _storageService.uploadProfilePicture(
+          userId: _userId!,
+          imageFile: _newProfileImage!,
+        );
+        imageUrl = uploadedUrl ?? imageUrl;
+      }
+
+      final userData = {
+        'first_name': _firstNameController.text.trim(),
+        'last_name': _lastNameController.text.trim(),
+        'phone': _phoneController.text.trim(),
+        'address': _addressController.text.trim(),
+        if (imageUrl != null) 'profile_image': imageUrl,
+      };
+
+      final handymanData = {
+        'experience': int.tryParse(_experienceController.text) ?? 0,
+        'hourly_rate': double.tryParse(_hourlyRateController.text) ?? 0.0,
+        'bio': _bioController.text.trim(),
+      };
+
+      await Future.wait([
+        _firestoreService.updateUserProfile(_userId!, userData),
+        if (widget.isHandyman) _firestoreService.updateHandymanProfile(_userId!, handymanData),
+      ]);
+
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Profile Updated!'), backgroundColor: Colors.green),
+        );
+        Navigator.pop(context, true);
+      }
+    } catch (e) {
+      debugPrint('Error saving profile: $e');
+    } finally {
+      if (mounted) setState(() => _isUploading = false);
+    }
+  }
+
+  @override
+  Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: Colors.white,
-      appBar: AppBar(
-        title: const Text('Edit Profile', style: TextStyle(fontWeight: FontWeight.bold)),
-        backgroundColor: Colors.white,
-        foregroundColor: AppColors.textDark,
-        elevation: 0,
-      ),
-      body: Form(
-        key: _formKey,
-        child: SingleChildScrollView(
-          padding: const EdgeInsets.all(20),
-          child: Column(
-            children: [
-              _buildPhotoPicker(),
-              const SizedBox(height: 32),
-              _buildPersonalFields(),
-              const SizedBox(height: 32),
-              _buildAddressFields(),
-              if (widget.isHandyman) ...[
-                const SizedBox(height: 32),
-                _buildProfessionalFields(),
-              ],
-              const SizedBox(height: 40),
-
-              CustomButton(
-                text: 'Save Changes',
-                onPressed: _isLoading ? () {} : _saveProfile,
-                isLoading: _isLoading,
+      appBar: AppBar(title: const Text('Edit Profile')),
+      body: _isLoading
+          ? const Center(child: CircularProgressIndicator())
+          : Form(
+              key: _formKey,
+              child: ListView(
+                padding: const EdgeInsets.all(20),
+                children: [
+                  _buildImagePicker(),
+                  const SizedBox(height: 24),
+                  ..._buildCommonFields(),
+                  if (widget.isHandyman) ..._buildHandymanFields(),
+                  const SizedBox(height: 32),
+                  CustomButton(
+                    text: _isUploading ? 'Saving...' : 'Save Changes',
+                    onPressed: _saveProfile,
+                    isLoading: _isUploading,
+                  ),
+                ],
               ),
-              const SizedBox(height: 20),
-            ],
-          ),
-        ),
-      ),
+            ),
     );
   }
 
-  Widget _buildPhotoPicker() {
+  Widget _buildImagePicker() {
     return Center(
-      child: GestureDetector(
-        onTap: _pickImage,
-        child: Stack(
-          children: [
-            CircleAvatar(
-              radius: 60,
-              backgroundColor: AppColors.primary.withOpacity(0.1),
-              backgroundImage: _imageFile != null
-                  ? FileImage(_imageFile!)
-                  : (_existingProfileUrl != null ? NetworkImage(_existingProfileUrl!) as ImageProvider : null),
-              child: (_imageFile == null && _existingProfileUrl == null)
-                  ? Text(
-                _firstNameController.text.isNotEmpty ? _firstNameController.text[0].toUpperCase() : '?',
-                style: const TextStyle(fontSize: 36, fontWeight: FontWeight.bold, color: AppColors.primary),
-              )
-                  : null,
-            ),
-            const Positioned(
-              bottom: 0,
-              right: 0,
-              child: CircleAvatar(
+      child: Stack(
+        children: [
+          CircleAvatar(
+            radius: 50,
+            backgroundColor: AppColors.primary.withOpacity(0.1),
+            backgroundImage: _newProfileImage != null
+                ? FileImage(_newProfileImage!)
+                : (_profileImageUrl != null && _profileImageUrl!.isNotEmpty
+                    ? CachedNetworkImageProvider(_profileImageUrl!)
+                    : null) as ImageProvider?,
+            child: _newProfileImage == null && (_profileImageUrl == null || _profileImageUrl!.isEmpty)
+                ? const Icon(Icons.person, size: 50, color: AppColors.primary)
+                : null,
+          ),
+          Positioned(
+            bottom: 0,
+            right: 0,
+            child: GestureDetector(
+              onTap: _pickProfileImage,
+              child: const CircleAvatar(
+                radius: 15,
                 backgroundColor: AppColors.primary,
-                radius: 18,
-                child: Icon(Icons.camera_alt, color: Colors.white, size: 18),
+                child: Icon(Icons.edit, size: 15, color: Colors.white),
               ),
             ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildPersonalFields() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('Personal Details', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 16),
-        CustomTextField(
-          label: 'First Name',
-          hint: 'Enter first name',
-          prefixIcon: Icons.person_outline,
-          controller: _firstNameController,
-          validator: (value) => value!.trim().isEmpty ? 'Required' : null,
-        ),
-        const SizedBox(height: 16),
-        CustomTextField(
-          label: 'Last Name',
-          hint: 'Enter last name',
-          prefixIcon: Icons.person_outline,
-          controller: _lastNameController,
-          validator: (value) => value!.trim().isEmpty ? 'Required' : null,
-        ),
-        const SizedBox(height: 16),
-        CustomTextField(
-          label: 'Phone',
-          hint: '07X XXX XXXX',
-          prefixIcon: Icons.phone_android,
-          controller: _phoneController,
-          keyboardType: TextInputType.phone,
-        ),
-      ],
-    );
+  List<Widget> _buildCommonFields() {
+    return [
+      CustomTextField(
+        label: 'First Name', hint: 'John', prefixIcon: Icons.person, 
+        controller: _firstNameController, validator: (v) => v!.isEmpty ? 'Required' : null,
+      ),
+      const SizedBox(height: 16),
+      CustomTextField(
+        label: 'Last Name', hint: 'Doe', prefixIcon: Icons.person_outline,
+        controller: _lastNameController, validator: (v) => v!.isEmpty ? 'Required' : null,
+      ),
+      const SizedBox(height: 16),
+      CustomTextField(
+        label: 'Phone', hint: '07...', prefixIcon: Icons.phone,
+        controller: _phoneController, keyboardType: TextInputType.phone,
+        validator: (v) => v!.isEmpty ? 'Required' : null,
+      ),
+      const SizedBox(height: 16),
+      CustomTextField(
+        label: 'Address', hint: '123 Main St...', prefixIcon: Icons.location_on,
+        controller: _addressController, maxLines: 3,
+        validator: (v) => v!.isEmpty ? 'Required' : null,
+      ),
+    ];
   }
 
-  Widget _buildAddressFields() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('Location Info', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 16),
-        CustomTextField(
-          label: 'Street Address',
-          hint: '123 Main St',
-          prefixIcon: Icons.location_on_outlined,
-          controller: _addressController,
-        ),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: CustomTextField(
-                label: 'City',
-                hint: 'Kandy',
-                prefixIcon: Icons.location_city,
-                controller: _cityController,
-              ),
+  List<Widget> _buildHandymanFields() {
+    return [
+      const SizedBox(height: 16),
+      const Divider(),
+      const SizedBox(height: 16),
+      Row(
+        children: [
+          Expanded(
+            child: CustomTextField(
+              label: 'Experience (Years)', hint: '5', prefixIcon: Icons.star,
+              controller: _experienceController, keyboardType: TextInputType.number,
+              validator: (v) => v!.isEmpty ? 'Required' : null,
             ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: CustomTextField(
-                label: 'Province',
-                hint: 'Central',
-                prefixIcon: Icons.map_outlined,
-                controller: _provinceController,
-              ),
+          ),
+          const SizedBox(width: 16),
+          Expanded(
+            child: CustomTextField(
+              label: 'Hourly Rate (Rs)', hint: '1500', prefixIcon: Icons.attach_money,
+              controller: _hourlyRateController, keyboardType: TextInputType.number,
+              validator: (v) => v!.isEmpty ? 'Required' : null,
             ),
-          ],
-        ),
-      ],
-    );
-  }
-
-  Widget _buildProfessionalFields() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const Text('Work Details', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
-        const SizedBox(height: 16),
-        Row(
-          children: [
-            Expanded(
-              child: CustomTextField(
-                label: 'Experience',
-                hint: 'Years',
-                prefixIcon: Icons.timeline,
-                controller: _experienceController,
-                keyboardType: TextInputType.number,
-              ),
-            ),
-            const SizedBox(width: 12),
-            Expanded(
-              child: CustomTextField(
-                label: 'Rate',
-                hint: 'Rs/Hr',
-                prefixIcon: Icons.payments_outlined,
-                controller: _hourlyRateController,
-                keyboardType: TextInputType.number,
-              ),
-            ),
-          ],
-        ),
-      ],
-    );
+          ),
+        ],
+      ),
+      const SizedBox(height: 16),
+      CustomTextField(
+        label: 'Bio / About Me', hint: 'Skills, work history...', prefixIcon: Icons.description,
+        controller: _bioController, maxLines: 4,
+      ),
+    ];
   }
 }

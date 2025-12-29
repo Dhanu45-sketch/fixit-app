@@ -63,25 +63,41 @@ class HandymanCard extends StatelessWidget {
             return Row(
               children: [
                 // PROFILE IMAGE / INITIALS
-                CircleAvatar(
-                  radius: 30,
-                  backgroundColor: AppColors.primary.withOpacity(0.1),
-                  child: snapshot.connectionState == ConnectionState.waiting
-                      ? const SizedBox(
-                    width: 20,
-                    height: 20,
-                    child: CircularProgressIndicator(strokeWidth: 2),
-                  )
-                      : Text(
-                    initial,
-                    style: const TextStyle(
-                      fontSize: 24,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.primary,
-                    ),
-                  ),
+                // In the HandymanCard widget, replace the CircleAvatar section:
+                FutureBuilder<Map<String, dynamic>?>(
+                  future: firestoreService.getUserProfile(handymanId),
+                  builder: (context, snapshot) {
+                    final userData = snapshot.data;
+                    final firstName = userData?['first_name'] ?? '';
+                    final lastName = userData?['last_name'] ?? '';
+                    final fullName = firstName.isEmpty ? "Handyman" : "$firstName $lastName";
+                    final String initial = firstName.isNotEmpty ? firstName[0].toUpperCase() : 'H';
+                    final String? profileImage = userData?['profile_image'];
+
+                    return CircleAvatar(
+                      radius: 30,
+                      backgroundColor: AppColors.primary.withOpacity(0.1),
+                      backgroundImage: profileImage != null ? NetworkImage(profileImage) : null,
+                      child: profileImage == null
+                          ? (snapshot.connectionState == ConnectionState.waiting
+                          ? const SizedBox(
+                        width: 20,
+                        height: 20,
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      )
+                          : Text(
+                        initial,
+                        style: const TextStyle(
+                          fontSize: 24,
+                          fontWeight: FontWeight.bold,
+                          color: AppColors.primary,
+                        ),
+                      ))
+                          : null,
+                    );
+                  },
                 ),
-                const SizedBox(width: 16),
+
 
                 // HANDYMAN INFO
                 Expanded(

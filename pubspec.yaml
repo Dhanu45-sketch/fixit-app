@@ -11,6 +11,9 @@ dependencies:
   google_maps_flutter: ^2.5.3
   location: ^5.0.3 # Optional: to show the user's current location
   image_picker: ^1.0.7
+
+  cached_network_image: ^3.3.1
+  # image_cropper: ^3.0.0 # Removed due to build incompatibility
   flutter:
     sdk: flutter
 
@@ -37,6 +40,7 @@ dependencies:
 
   # Utilities
   equatable: ^2.0.5
+
 
 dev_dependencies:
   flutter_test:

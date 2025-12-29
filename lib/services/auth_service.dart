@@ -1,5 +1,6 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
+import 'package:flutter/foundation.dart';
 
 class AuthService {
   final FirebaseAuth _auth = FirebaseAuth.instance;
@@ -11,6 +12,17 @@ class AuthService {
   // Getters
   String? get currentUserId => _auth.currentUser?.uid;
   String? get currentUserEmail => _auth.currentUser?.email;
+
+  // --- GET SERVICE CATEGORIES ---
+  Stream<List<Map<String, dynamic>>> getServiceCategories() {
+    return _db.collection('serviceCategories').snapshots().map((snapshot) {
+      return snapshot.docs.map((doc) {
+        final data = doc.data();
+        data['id'] = doc.id;
+        return data;
+      }).toList();
+    });
+  }
 
   // --- SIGN IN ---
   Future<UserCredential?> signIn({required String email, required String password}) async {
@@ -33,20 +45,18 @@ class AuthService {
     required String password,
   }) async {
     try {
-      // 1. Create User in Firebase Auth
       UserCredential result = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
 
-      // 2. Create User Profile in Firestore aligned with your screenshot
       await _db.collection('users').doc(result.user!.uid).set({
         'first_name': firstName,
         'last_name': lastName,
         'email': email,
         'phone': phone,
-        'is_handyman': false, // Match screenshot field
-        'is_active': true,    // Match screenshot field
+        'is_handyman': false,
+        'is_active': true,
         'created_at': FieldValue.serverTimestamp(),
         'updated_at': FieldValue.serverTimestamp(),
       });
@@ -71,37 +81,33 @@ class AuthService {
     String? bio,
   }) async {
     try {
-      // 1. Create User in Firebase Auth
       UserCredential result = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
-
       final String uid = result.user!.uid;
 
-      // 2. Create Basic User Profile
       await _db.collection('users').doc(uid).set({
         'first_name': firstName,
         'last_name': lastName,
         'email': email,
         'phone': phone,
-        'is_handyman': true, // Setting true for handyman
+        'is_handyman': true,
         'is_active': true,
         'created_at': FieldValue.serverTimestamp(),
         'updated_at': FieldValue.serverTimestamp(),
       });
 
-      // 3. Create Detailed Handyman Profile aligned with your screenshot
       await _db.collection('handymanProfiles').doc(uid).set({
-        'user_id': uid,                // Added to match screenshot
-        'category_id': categoryId,     // e.g., 'plumbing'
-        'category_name': categoryName, // e.g., 'Plumbing'
+        'user_id': uid,
+        'category_id': categoryId,
+        'category_name': categoryName,
         'experience': experience,
         'hourly_rate': hourlyRate,
         'bio': bio ?? '',
-        'rating_avg': 0.0,             // Initial value
-        'jobs_completed': 0,           // Changed from review_count to match screenshot
-        'work_status': "Available",    // Changed from is_available to match screenshot
+        'rating_avg': 0.0,
+        'jobs_completed': 0,
+        'work_status': "Available",
         'updated_at': FieldValue.serverTimestamp(),
       });
 
@@ -110,6 +116,37 @@ class AuthService {
       rethrow;
     }
   }
+
+    // --- UPDATE USER PROFILE ---
+  Future<bool> updateUserProfile({
+    required String userId,
+    required String firstName,
+    required String lastName,
+    required String phone,
+    required String address,
+    String? profilePictureUrl,
+  }) async {
+    try {
+      final dataToUpdate = {
+        'first_name': firstName,
+        'last_name': lastName,
+        'phone': phone,
+        'address': address,
+        'updated_at': FieldValue.serverTimestamp(),
+      };
+
+      if (profilePictureUrl != null) {
+        dataToUpdate['profile_picture_url'] = profilePictureUrl;
+      }
+
+      await _db.collection('users').doc(userId).update(dataToUpdate);
+      return true;
+    } catch (e) {
+      debugPrint("Error updating profile: $e");
+      return false;
+    }
+  }
+
 
   // --- UTILS ---
   Future<void> signOut() async {
@@ -125,7 +162,11 @@ class AuthService {
       final user = _auth.currentUser;
       if (user != null) {
         final doc = await _db.collection('users').doc(user.uid).get();
-        return doc.data();
+        if (doc.exists) {
+          final data = doc.data()!;
+          data['id'] = user.uid; // Important: Add user ID to map
+          return data;
+        }
       }
       return null;
     } catch (e) {
