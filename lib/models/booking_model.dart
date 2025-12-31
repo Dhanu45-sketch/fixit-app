@@ -1,3 +1,4 @@
+// lib/models/booking_model.dart
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class Booking {
@@ -6,12 +7,14 @@ class Booking {
   final String handymanId;
   final String customerName;
   final String serviceName;
-  final String status; // Pending, Confirmed, Rejected, In Progress, Completed, Cancelled
+  final String status;
   final DateTime scheduledStartTime;
   final double totalPrice;
   final String notes;
   final String address;
   final bool isEmergency;
+  final bool hasReview;    // NEW: Track if booking has been reviewed
+  final String? reviewId;  // NEW: Link to review document
 
   Booking({
     required this.id,
@@ -25,9 +28,10 @@ class Booking {
     required this.notes,
     required this.address,
     this.isEmergency = false,
+    this.hasReview = false,
+    this.reviewId,
   });
 
-  // Convert Firestore Document to Booking Object
   factory Booking.fromFirestore(DocumentSnapshot doc) {
     Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
     return Booking(
@@ -42,10 +46,11 @@ class Booking {
       notes: data['notes'] ?? '',
       address: data['address'] ?? 'No Address',
       isEmergency: data['is_emergency'] ?? false,
+      hasReview: data['has_review'] ?? false,
+      reviewId: data['review_id'],
     );
   }
 
-  // Convert Booking Object to Map for saving to Firestore
   Map<String, dynamic> toMap() {
     return {
       'customer_id': customerId,
@@ -58,6 +63,8 @@ class Booking {
       'notes': notes,
       'address': address,
       'is_emergency': isEmergency,
+      'has_review': hasReview,
+      'review_id': reviewId,
     };
   }
 }

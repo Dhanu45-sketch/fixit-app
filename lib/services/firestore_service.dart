@@ -1,7 +1,9 @@
+// lib/services/firestore_service.dart
 import 'dart:async';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:firebase_auth/firebase_auth.dart';
 import '../models/booking_model.dart';
+import '../models/review_model.dart';
 
 class FirestoreService {
   final FirebaseFirestore _db = FirebaseFirestore.instance;
@@ -67,6 +69,7 @@ class FirestoreService {
       'bio': bio ?? '',
       'work_status': workStatus ?? 'Available',
       'rating_avg': 0.0,
+      'rating_count': 0,  // ADDED: Track total review count
       'jobs_completed': 0,
       'updated_at': FieldValue.serverTimestamp(),
     });
@@ -152,6 +155,8 @@ class FirestoreService {
       'notes': notes,
       'is_emergency': isEmergency,
       'address': userData['address'] ?? 'No address provided',
+      'has_review': false,  // ADDED: Track if booking has been reviewed
+      'review_id': null,    // ADDED: Link to review document
       'created_at': FieldValue.serverTimestamp(),
     });
 
@@ -197,6 +202,135 @@ class FirestoreService {
       'rejection_reason': reason,
       'updated_at': FieldValue.serverTimestamp(),
     });
+  }
+
+  // ==========================================
+  // REVIEW METHODS (NEW)
+  // ==========================================
+
+  /// Submit a review for a completed booking
+  Future<void> submitReview({
+    required String handymanId,
+    required String customerId,
+    required String customerName,
+    required String bookingId,
+    required int rating,
+    required String comment,
+    String? customerPhoto,
+  }) async {
+    // Validation
+    if (rating < 1 || rating > 5) {
+      throw Exception('Rating must be between 1 and 5');
+    }
+
+    // Check if review already exists for this booking
+    final existingReview = await _db
+        .collection('reviews')
+        .where('booking_id', isEqualTo: bookingId)
+        .limit(1)
+        .get();
+
+    if (existingReview.docs.isNotEmpty) {
+      throw Exception('You have already reviewed this booking');
+    }
+
+    // Use a batch write to ensure atomicity
+    final batch = _db.batch();
+
+    // 1. Add the review
+    final reviewRef = _db.collection('reviews').doc();
+    batch.set(reviewRef, {
+      'handyman_id': handymanId,
+      'customer_id': customerId,
+      'customer_name': customerName,
+      'booking_id': bookingId,
+      'rating': rating,
+      'comment': comment,
+      'customer_photo': customerPhoto,
+      'created_at': FieldValue.serverTimestamp(),
+    });
+
+    // 2. Get current handyman stats
+    final handymanDoc = await _db.collection('handymanProfiles').doc(handymanId).get();
+    final handymanData = handymanDoc.data() ?? {};
+
+    final double currentAvg = (handymanData['rating_avg'] ?? 0.0).toDouble();
+    final int currentCount = (handymanData['rating_count'] ?? 0);
+
+    // 3. Calculate new average
+    final double newAvg = ((currentAvg * currentCount) + rating) / (currentCount + 1);
+
+    // 4. Update handyman profile with new stats
+    final handymanRef = _db.collection('handymanProfiles').doc(handymanId);
+    batch.update(handymanRef, {
+      'rating_avg': newAvg,
+      'rating_count': currentCount + 1,
+      'updated_at': FieldValue.serverTimestamp(),
+    });
+
+    // 5. Mark booking as reviewed
+    final bookingRef = _db.collection('bookings').doc(bookingId);
+    batch.update(bookingRef, {
+      'has_review': true,
+      'review_id': reviewRef.id,
+    });
+
+    // Commit all changes atomically
+    await batch.commit();
+  }
+
+  /// Get reviews for a specific handyman
+  Stream<List<Review>> getHandymanReviews(String handymanId, {int limit = 10}) {
+    return _db
+        .collection('reviews')
+        .where('handyman_id', isEqualTo: handymanId)
+        .orderBy('created_at', descending: true)
+        .limit(limit)
+        .snapshots()
+        .map((snapshot) => snapshot.docs.map((doc) => Review.fromFirestore(doc)).toList());
+  }
+
+  /// Get rating breakdown (number of 1-star, 2-star, etc.)
+  Future<Map<int, int>> getRatingBreakdown(String handymanId) async {
+    final snapshot = await _db
+        .collection('reviews')
+        .where('handyman_id', isEqualTo: handymanId)
+        .get();
+
+    final Map<int, int> breakdown = {1: 0, 2: 0, 3: 0, 4: 0, 5: 0};
+
+    for (var doc in snapshot.docs) {
+      final rating = doc.data()['rating'] as int;
+      breakdown[rating] = (breakdown[rating] ?? 0) + 1;
+    }
+
+    return breakdown;
+  }
+
+  /// Check if a booking can be reviewed
+  Future<bool> canReviewBooking(String bookingId) async {
+    final bookingDoc = await _db.collection('bookings').doc(bookingId).get();
+
+    if (!bookingDoc.exists) return false;
+
+    final data = bookingDoc.data()!;
+    final status = data['status'] as String;
+    final hasReview = data['has_review'] ?? false;
+
+    return status == 'Completed' && !hasReview;
+  }
+
+  /// Get review for a specific booking
+  Future<Review?> getReviewByBookingId(String bookingId) async {
+    final snapshot = await _db
+        .collection('reviews')
+        .where('booking_id', isEqualTo: bookingId)
+        .limit(1)
+        .get();
+
+    if (snapshot.docs.isEmpty) return null;
+
+    return Review.fromFirestore(snapshot.docs.first);
   }
 
   // ==========================================

@@ -1,7 +1,9 @@
+// lib/widgets/booking_card.dart
 import 'package:flutter/material.dart';
 import '../models/booking_model.dart';
 import '../utils/colors.dart';
 import 'package:intl/intl.dart';
+import '../widgets/review_bottom_sheet.dart'; // NEW IMPORT
 
 class BookingCard extends StatelessWidget {
   final Booking booking;
@@ -18,14 +20,14 @@ class BookingCard extends StatelessWidget {
       case 'pending':
         return Colors.orange;
       case 'confirmed':
-      case 'accepted': // Added 'accepted' to match our new logic
+      case 'accepted':
         return Colors.green;
       case 'in progress':
         return AppColors.primary;
       case 'completed':
         return Colors.blue;
       case 'cancelled':
-      case 'rejected': // Added 'rejected'
+      case 'rejected':
         return Colors.red;
       default:
         return AppColors.textLight;
@@ -36,6 +38,9 @@ class BookingCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final String formattedDate = DateFormat('dd MMM yyyy').format(booking.scheduledStartTime);
     final String formattedTime = DateFormat('hh:mm a').format(booking.scheduledStartTime);
+
+    // NEW: Determine if we should show the review button
+    final bool canReview = booking.status == 'Completed' && !booking.hasReview;
 
     return GestureDetector(
       onTap: onTap,
@@ -62,7 +67,7 @@ class BookingCard extends StatelessWidget {
                 Expanded(
                   child: Row(
                     children: [
-                      if (booking.isEmergency) // Visual indicator for Emergency
+                      if (booking.isEmergency)
                         const Padding(
                           padding: EdgeInsets.only(right: 8.0),
                           child: Icon(Icons.bolt, color: Colors.red, size: 20),
@@ -101,14 +106,11 @@ class BookingCard extends StatelessWidget {
             ),
             const SizedBox(height: 12),
 
-            // Customer Name (Used in Handyman view)
-            // OR Professional Identity
             Row(
               children: [
                 const Icon(Icons.person_outline, size: 16, color: AppColors.textLight),
                 const SizedBox(width: 8),
                 Text(
-                  // FIX: Using customerName because that's what's in our Model
                   booking.customerName,
                   style: const TextStyle(
                     fontSize: 13,
@@ -159,6 +161,7 @@ class BookingCard extends StatelessWidget {
             ],
 
             const Divider(height: 24),
+
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
@@ -192,6 +195,65 @@ class BookingCard extends StatelessWidget {
                 ),
               ],
             ),
+
+            // NEW: Review Button for Completed Jobs
+            if (canReview) ...[
+              const SizedBox(height: 12),
+              SizedBox(
+                width: double.infinity,
+                child: ElevatedButton.icon(
+                  onPressed: () {
+                    showModalBottomSheet(
+                      context: context,
+                      isScrollControlled: true,
+                      backgroundColor: Colors.transparent,
+                      builder: (sheetContext) => ReviewBottomSheet(
+                        handymanId: booking.handymanId,
+                        handymanName: 'Handyman', // You can fetch this if needed
+                        bookingId: booking.id,
+                      ),
+                    );
+                  },
+                  icon: const Icon(Icons.star_outline, size: 18),
+                  label: const Text('Rate this Service'),
+                  style: ElevatedButton.styleFrom(
+                    backgroundColor: AppColors.accent,
+                    foregroundColor: Colors.white,
+                    padding: const EdgeInsets.symmetric(vertical: 12),
+                    shape: RoundedRectangleBorder(
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                  ),
+                ),
+              ),
+            ],
+
+            // Show if already reviewed
+            if (booking.hasReview) ...[
+              const SizedBox(height: 12),
+              Container(
+                padding: const EdgeInsets.all(8),
+                decoration: BoxDecoration(
+                  color: AppColors.success.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: const Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  children: [
+                    Icon(Icons.check_circle, color: AppColors.success, size: 16),
+                    SizedBox(width: 8),
+                    Text(
+                      'You reviewed this service',
+                      style: TextStyle(
+                        color: AppColors.success,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ],
           ],
         ),
       ),

@@ -1,9 +1,10 @@
+// lib/screens/handyman/handyman_detail_screen.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:cached_network_image/cached_network_image.dart';
 import '../../widgets/custom_button.dart';
 import '../../utils/colors.dart';
 import '../../widgets/booking_bottom_sheet.dart';
+import '../../widgets/reviews_section.dart'; // NEW IMPORT
 
 class HandymanDetailScreen extends StatefulWidget {
   final String handymanId;
@@ -47,17 +48,27 @@ class _HandymanDetailScreenState extends State<HandymanDetailScreen> {
             final String firstName = uData?['first_name'] ?? 'Handyman';
             final String lastName = uData?['last_name'] ?? '';
             final String fullName = "$firstName $lastName";
-            final String? profileImage = uData?['profile_image'];
 
             return Scaffold(
               backgroundColor: AppColors.background,
               body: CustomScrollView(
                 slivers: [
-                  _buildHeader(fullName, hData, profileImage),
+                  _buildHeader(fullName, hData),
                   _buildStatsRow(hData),
                   _buildAboutSection(hData, uData ?? {}),
-                  _buildCertificatesSection(hData),
-                  _buildReviewSection(),
+
+                  // NEW: Reviews Section
+                  SliverToBoxAdapter(
+                    child: Padding(
+                      padding: const EdgeInsets.only(top: 20),
+                      child: ReviewsSection(
+                        handymanId: widget.handymanId,
+                        averageRating: (hData['rating_avg'] ?? 0.0).toDouble(),
+                        totalReviews: hData['rating_count'] ?? 0,
+                      ),
+                    ),
+                  ),
+
                   const SliverToBoxAdapter(child: SizedBox(height: 100)),
                 ],
               ),
@@ -69,7 +80,7 @@ class _HandymanDetailScreenState extends State<HandymanDetailScreen> {
     );
   }
 
-  Widget _buildHeader(String name, Map<String, dynamic> data, String? profileImage) {
+  Widget _buildHeader(String name, Map<String, dynamic> data) {
     return SliverAppBar(
       expandedHeight: 250,
       pinned: true,
@@ -90,16 +101,10 @@ class _HandymanDetailScreenState extends State<HandymanDetailScreen> {
               CircleAvatar(
                 radius: 45,
                 backgroundColor: Colors.white,
-                backgroundImage: (profileImage != null && profileImage.isNotEmpty)
-                    ? CachedNetworkImageProvider(profileImage)
-                    : null,
-                child: (profileImage == null || profileImage.isEmpty)
-                    ? Text(
-                        name.isNotEmpty ? name[0].toUpperCase() : 'H',
-                        style: const TextStyle(
-                            fontSize: 32, fontWeight: FontWeight.bold, color: AppColors.primary),
-                      )
-                    : null,
+                child: Text(
+                  name.isNotEmpty ? name[0].toUpperCase() : 'H',
+                  style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: AppColors.primary),
+                ),
               ),
               const SizedBox(height: 12),
               Text(
@@ -139,11 +144,7 @@ class _HandymanDetailScreenState extends State<HandymanDetailScreen> {
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 20),
         padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
-        ),
+        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -153,74 +154,11 @@ class _HandymanDetailScreenState extends State<HandymanDetailScreen> {
               Text(hData['bio'], style: const TextStyle(color: AppColors.textLight)),
               const SizedBox(height: 16),
             ],
-            _buildInfoRow(Icons.phone, uData['phone'] ?? 'Contact via app'),
+            _buildInfoRow(Icons.location_on, uData['phone'] ?? 'Contact via app'),
             const SizedBox(height: 12),
             _buildInfoRow(Icons.attach_money, 'Rs ${(hData['hourly_rate'] ?? 0).toString()}/hr'),
             const SizedBox(height: 12),
             _buildInfoRow(Icons.verified, 'Verified Service Provider'),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildCertificatesSection(Map<String, dynamic> hData) {
-    final List<String> certificates = List<String>.from(hData['certificates'] ?? []);
-
-    if (certificates.isEmpty) {
-      return const SliverToBoxAdapter(child: SizedBox.shrink()); // Return empty if no certs
-    }
-
-    return SliverToBoxAdapter(
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 10),
-        padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Certificates & Qualifications', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 16),
-            SizedBox(
-              height: 140,
-              child: ListView.builder(
-                scrollDirection: Axis.horizontal,
-                itemCount: certificates.length,
-                itemBuilder: (context, index) {
-                  return Container(
-                    width: 140,
-                    margin: const EdgeInsets.only(right: 12),
-                    decoration: BoxDecoration(
-                      borderRadius: BorderRadius.circular(12),
-                      image: DecorationImage(
-                        image: CachedNetworkImageProvider(certificates[index]),
-                        fit: BoxFit.cover,
-                      ),
-                    ),
-                  );
-                },
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  Widget _buildReviewSection() {
-    return SliverToBoxAdapter(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            const Text('Recent Reviews', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
-            const SizedBox(height: 12),
-            const Text('No reviews yet', style: TextStyle(color: AppColors.textLight)),
           ],
         ),
       ),
@@ -253,12 +191,7 @@ class _HandymanDetailScreenState extends State<HandymanDetailScreen> {
       children: [
         Icon(icon, size: 20, color: AppColors.primary),
         const SizedBox(width: 12),
-        Expanded(
-          child: Text(
-            text,
-            style: const TextStyle(fontSize: 15, color: AppColors.textDark),
-          ),
-        ),
+        Text(text, style: const TextStyle(fontSize: 15, color: AppColors.textDark)),
       ],
     );
   }
@@ -275,25 +208,31 @@ class _HandymanDetailScreenState extends State<HandymanDetailScreen> {
       padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
         color: Colors.white,
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10, offset: const Offset(0, -5))],
+        boxShadow: [
+          BoxShadow(
+              color: Colors.black.withOpacity(0.05),
+              blurRadius: 10,
+              offset: const Offset(0, -5)
+          )
+        ],
       ),
       child: SafeArea(
         child: CustomButton(
           text: isAvailable ? 'Book Now' : 'Not Available',
           onPressed: isAvailable
               ? () {
-                  showModalBottomSheet(
-                    context: context,
-                    isScrollControlled: true,
-                    backgroundColor: Colors.transparent,
-                    builder: (sheetContext) => BookingBottomSheet(
-                      handymanId: widget.handymanId,
-                      handymanName: fullName,
-                      hourlyRate: rate,
-                      serviceName: category,
-                    ),
-                  );
-                }
+            showModalBottomSheet(
+              context: context,
+              isScrollControlled: true,
+              backgroundColor: Colors.transparent,
+              builder: (sheetContext) => BookingBottomSheet(
+                handymanId: widget.handymanId,
+                handymanName: fullName,
+                hourlyRate: rate,
+                serviceName: category,
+              ),
+            );
+          }
               : () {},
           backgroundColor: isAvailable ? AppColors.primary : Colors.grey,
         ),
