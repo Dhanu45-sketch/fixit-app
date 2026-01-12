@@ -1,8 +1,7 @@
-// lib/widgets/handyman_card.dart
 import 'package:flutter/material.dart';
-import '../models/handyman_model.dart';
-import '../screens/handyman/handyman_detail_screen.dart';
-import '../utils/colors.dart';
+import '../lib/models/handyman_model.dart';
+import '../lib/screens/handyman/handyman_detail_screen.dart';
+import '../lib/utils/colors.dart';
 
 class HandymanCard extends StatelessWidget {
   final Handyman handyman;
@@ -16,7 +15,8 @@ class HandymanCard extends StatelessWidget {
         Navigator.push(
           context,
           MaterialPageRoute(
-            builder: (_) => HandymanDetailScreen(handyman: handyman),
+            // FIX: Pass handymanId as a String, not the whole object
+            builder: (_) => HandymanDetailScreen(handymanId: handyman.id),
           ),
         );
       },
@@ -40,10 +40,10 @@ class HandymanCard extends StatelessWidget {
             CircleAvatar(
               radius: 35,
               backgroundColor: AppColors.primary.withOpacity(0.1),
-              backgroundImage: handyman.profilePhoto != null
+              backgroundImage: handyman.profilePhoto != null && handyman.profilePhoto!.isNotEmpty
                   ? NetworkImage(handyman.profilePhoto!)
                   : null,
-              child: handyman.profilePhoto == null
+              child: (handyman.profilePhoto == null || handyman.profilePhoto!.isEmpty)
                   ? Text(
                 handyman.initials,
                 style: const TextStyle(

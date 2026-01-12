@@ -3,8 +3,15 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import 'package:flutter/foundation.dart';
 
 class AuthService {
-  final FirebaseAuth _auth = FirebaseAuth.instance;
-  final FirebaseFirestore _db = FirebaseFirestore.instance;
+  final FirebaseAuth _auth;
+  final FirebaseFirestore _db;
+
+  // Updated constructor to support dependency injection for testing
+  AuthService({
+    FirebaseAuth? auth,
+    FirebaseFirestore? firestore,
+  })  : _auth = auth ?? FirebaseAuth.instance,
+        _db = firestore ?? FirebaseFirestore.instance;
 
   // Stream to listen to auth state changes
   Stream<User?> get authStateChanges => _auth.authStateChanges();
@@ -43,6 +50,7 @@ class AuthService {
     required String email,
     required String phone,
     required String password,
+    bool isHandyman = false,
   }) async {
     try {
       UserCredential result = await _auth.createUserWithEmailAndPassword(
@@ -55,7 +63,7 @@ class AuthService {
         'last_name': lastName,
         'email': email,
         'phone': phone,
-        'is_handyman': false,
+        'is_handyman': isHandyman,
         'is_active': true,
         'created_at': FieldValue.serverTimestamp(),
         'updated_at': FieldValue.serverTimestamp(),
