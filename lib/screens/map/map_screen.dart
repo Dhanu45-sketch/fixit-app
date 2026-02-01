@@ -9,7 +9,12 @@ import '../../widgets/handyman_card.dart';
 import '../handyman/handyman_detail_screen.dart';
 
 class MapScreen extends StatefulWidget {
-  const MapScreen({super.key});
+  final bool isEmergencyMode;
+
+  const MapScreen({
+    super.key,
+    this.isEmergencyMode = false,
+  });
 
   @override
   State<MapScreen> createState() => _MapScreenState();
@@ -25,15 +30,17 @@ class _MapScreenState extends State<MapScreen> {
   String? _selectedHandymanId;
   Map<String, dynamic>? _selectedHandyman;
   List<Map<String, dynamic>> _allHandymen = [];
+  bool _localEmergencyMode = false; // Local emergency toggle
 
   static const CameraPosition _initialPosition = CameraPosition(
-    target: LatLng(7.2906, 80.6337), // Kandy coordinates
+    target: LatLng(7.2906, 80.6337),
     zoom: 13.0,
   );
 
   @override
   void initState() {
     super.initState();
+    _localEmergencyMode = widget.isEmergencyMode; // Initialize with passed value
     _initializeMap();
   }
 
@@ -99,7 +106,11 @@ class _MapScreenState extends State<MapScreen> {
 
   Future<void> _loadHandymenMarkers() async {
     try {
-      final handymenStream = _firestoreService.getTopRatedHandymen(limit: 50);
+      // FIX: Use emergency filtering based on local toggle state
+      final handymenStream = _firestoreService.getTopRatedHandymen(
+        limit: 50,
+        emergencyOnly: _localEmergencyMode, // Filter by emergency mode
+      );
 
       handymenStream.listen((handymen) {
         if (!mounted) return;
@@ -117,15 +128,20 @@ class _MapScreenState extends State<MapScreen> {
             final lat = geoPoint.latitude;
             final lng = geoPoint.longitude;
 
+            // FIX: Use red markers for emergency mode, purple for normal
             return Marker(
               markerId: MarkerId(id),
               position: LatLng(lat, lng),
               icon: BitmapDescriptor.defaultMarkerWithHue(
-                BitmapDescriptor.hueViolet,
+                _localEmergencyMode 
+                    ? BitmapDescriptor.hueRed 
+                    : BitmapDescriptor.hueViolet,
               ),
               infoWindow: InfoWindow(
                 title: '${handyman['first_name']} ${handyman['last_name']}',
-                snippet: '${handyman['category_name']} - ₨${handyman['hourly_rate']}/hr',
+                snippet: _localEmergencyMode
+                    ? '${handyman['category_name']} - ₨${FirestoreService.calculateEmergencyPrice((handyman['hourly_rate'] ?? 0.0).toDouble()).toStringAsFixed(0)}/hr (Emergency)'
+                    : '${handyman['category_name']} - ₨${handyman['hourly_rate']}/hr',
               ),
               onTap: () => _onMarkerTapped(id, handyman),
             );
@@ -160,6 +176,31 @@ class _MapScreenState extends State<MapScreen> {
     );
   }
 
+  // FIX: Toggle emergency mode and reload markers
+  void _toggleEmergencyMode(bool value) {
+    setState(() {
+      _localEmergencyMode = value;
+      _isLoading = true;
+      _markers.clear();
+      _selectedHandymanId = null;
+      _selectedHandyman = null;
+    });
+    _loadHandymenMarkers(); // Reload with new filter
+    
+    ScaffoldMessenger.of(context).showSnackBar(
+      SnackBar(
+        content: Text(
+          value
+              ? '🚨 Showing emergency specialists only'
+              : 'Showing all available specialists',
+        ),
+        backgroundColor: value ? Colors.red.shade700 : AppColors.primary,
+        behavior: SnackBarBehavior.floating,
+        duration: const Duration(seconds: 2),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
@@ -189,54 +230,80 @@ class _MapScreenState extends State<MapScreen> {
               ),
             ),
 
-          // Top Bar
+          // Top Bar with Emergency Toggle
           Positioned(
             top: 0,
             left: 0,
             right: 0,
             child: SafeArea(
-              child: Container(
-                margin: const EdgeInsets.all(16),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(12),
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withOpacity(0.1),
-                      blurRadius: 8,
-                      offset: const Offset(0, 2),
-                    ),
-                  ],
-                ),
-                child: Row(
-                  children: [
-                    const Icon(Icons.location_on, color: AppColors.primary),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          const Text(
-                            'Available Handymen Nearby',
-                            style: TextStyle(
-                              fontSize: 16,
-                              fontWeight: FontWeight.bold,
-                              color: AppColors.textDark,
-                            ),
-                          ),
-                          Text(
-                            '${_markers.length} specialists found',
-                            style: const TextStyle(
-                              fontSize: 12,
-                              color: AppColors.textLight,
-                            ),
-                          ),
-                        ],
+              child: Column(
+                children: [
+                  // Emergency Toggle
+                  Container(
+                    margin: const EdgeInsets.all(16),
+                    padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                    decoration: BoxDecoration(
+                      color: _localEmergencyMode ? Colors.red.shade50 : Colors.white,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(
+                        color: _localEmergencyMode ? Colors.red.shade300 : Colors.grey.shade300,
+                        width: _localEmergencyMode ? 2 : 1,
                       ),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withOpacity(0.1),
+                          blurRadius: 8,
+                          offset: const Offset(0, 2),
+                        ),
+                      ],
                     ),
-                  ],
-                ),
+                    child: Row(
+                      children: [
+                        Icon(
+                          Icons.emergency,
+                          color: _localEmergencyMode ? Colors.red.shade700 : AppColors.primary,
+                        ),
+                        const SizedBox(width: 12),
+                        Expanded(
+                          child: Column(
+                            crossAxisAlignment: CrossAxisAlignment.start,
+                            children: [
+                              Text(
+                                _localEmergencyMode 
+                                    ? 'Emergency Mode Active' 
+                                    : 'Available Handymen Nearby',
+                                style: TextStyle(
+                                  fontSize: 15,
+                                  fontWeight: FontWeight.bold,
+                                  color: _localEmergencyMode 
+                                      ? Colors.red.shade700 
+                                      : AppColors.textDark,
+                                ),
+                              ),
+                              Text(
+                                _localEmergencyMode
+                                    ? '${_markers.length} emergency specialists (+15% fee)'
+                                    : '${_markers.length} specialists found',
+                                style: TextStyle(
+                                  fontSize: 12,
+                                  color: _localEmergencyMode 
+                                      ? Colors.red.shade700 
+                                      : AppColors.textLight,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        Switch(
+                          value: _localEmergencyMode,
+                          onChanged: _toggleEmergencyMode,
+                          activeColor: Colors.white,
+                          activeTrackColor: Colors.red.shade700,
+                        ),
+                      ],
+                    ),
+                  ),
+                ],
               ),
             ),
           ),
@@ -297,6 +364,7 @@ class _MapScreenState extends State<MapScreen> {
                             rating: (_selectedHandyman!['rating_avg'] ?? 0.0).toDouble(),
                             jobsCompleted: _selectedHandyman!['jobs_completed'] ?? 0,
                             hourlyRate: (_selectedHandyman!['hourly_rate'] ?? 0.0).toDouble(),
+                            isEmergencyMode: _localEmergencyMode, // Pass emergency state
                           ),
                           const SizedBox(height: 12),
                           Row(
@@ -331,6 +399,7 @@ class _MapScreenState extends State<MapScreen> {
                                       MaterialPageRoute(
                                         builder: (_) => HandymanDetailScreen(
                                           handymanId: _selectedHandymanId!,
+                                          isEmergency: _localEmergencyMode, // Pass emergency state
                                         ),
                                       ),
                                     );
@@ -338,7 +407,9 @@ class _MapScreenState extends State<MapScreen> {
                                   icon: const Icon(Icons.person),
                                   label: const Text('View Profile'),
                                   style: ElevatedButton.styleFrom(
-                                    backgroundColor: AppColors.primary,
+                                    backgroundColor: _localEmergencyMode 
+                                        ? Colors.red.shade700 
+                                        : AppColors.primary,
                                     foregroundColor: Colors.white,
                                     padding: const EdgeInsets.symmetric(vertical: 14),
                                     shape: RoundedRectangleBorder(

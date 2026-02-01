@@ -1,17 +1,9 @@
 import 'package:firebase_auth/firebase_auth.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
-import 'package:flutter/foundation.dart';
 
 class AuthService {
-  final FirebaseAuth _auth;
-  final FirebaseFirestore _db;
-
-  // Updated constructor to support dependency injection for testing
-  AuthService({
-    FirebaseAuth? auth,
-    FirebaseFirestore? firestore,
-  })  : _auth = auth ?? FirebaseAuth.instance,
-        _db = firestore ?? FirebaseFirestore.instance;
+  final FirebaseAuth _auth = FirebaseAuth.instance;
+  final FirebaseFirestore _db = FirebaseFirestore.instance;
 
   // Stream to listen to auth state changes
   Stream<User?> get authStateChanges => _auth.authStateChanges();
@@ -19,17 +11,6 @@ class AuthService {
   // Getters
   String? get currentUserId => _auth.currentUser?.uid;
   String? get currentUserEmail => _auth.currentUser?.email;
-
-  // --- GET SERVICE CATEGORIES ---
-  Stream<List<Map<String, dynamic>>> getServiceCategories() {
-    return _db.collection('serviceCategories').snapshots().map((snapshot) {
-      return snapshot.docs.map((doc) {
-        final data = doc.data();
-        data['id'] = doc.id;
-        return data;
-      }).toList();
-    });
-  }
 
   // --- SIGN IN ---
   Future<UserCredential?> signIn({required String email, required String password}) async {
@@ -50,20 +31,21 @@ class AuthService {
     required String email,
     required String phone,
     required String password,
-    bool isHandyman = false,
   }) async {
     try {
+      // 1. Create User in Firebase Auth
       UserCredential result = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
 
+      // 2. Create User Profile in Firestore
       await _db.collection('users').doc(result.user!.uid).set({
         'first_name': firstName,
         'last_name': lastName,
         'email': email,
         'phone': phone,
-        'is_handyman': isHandyman,
+        'is_handyman': false,
         'is_active': true,
         'created_at': FieldValue.serverTimestamp(),
         'updated_at': FieldValue.serverTimestamp(),
@@ -87,14 +69,18 @@ class AuthService {
     required int experience,
     required double hourlyRate,
     String? bio,
+    bool acceptsEmergencies = false, // NEW: Emergency opt-in
   }) async {
     try {
+      // 1. Create User in Firebase Auth
       UserCredential result = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
+
       final String uid = result.user!.uid;
 
+      // 2. Create Basic User Profile
       await _db.collection('users').doc(uid).set({
         'first_name': firstName,
         'last_name': lastName,
@@ -106,6 +92,7 @@ class AuthService {
         'updated_at': FieldValue.serverTimestamp(),
       });
 
+      // 3. Create Detailed Handyman Profile with Approval Status
       await _db.collection('handymanProfiles').doc(uid).set({
         'user_id': uid,
         'category_id': categoryId,
@@ -116,6 +103,19 @@ class AuthService {
         'rating_avg': 0.0,
         'jobs_completed': 0,
         'work_status': "Available",
+        
+        // EMERGENCY CONFIGURATION
+        'accepts_emergencies': acceptsEmergencies,
+        'emergency_earnings': 0.0, // Track total emergency earnings
+        'emergency_jobs_count': 0, // Track emergency jobs completed
+        
+        // APPROVAL SYSTEM
+        'approval_status': 'pending', // pending, approved, rejected, suspended
+        'approval_submitted_at': FieldValue.serverTimestamp(),
+        'approval_reviewed_at': null,
+        'approval_reviewed_by': null,
+        'approval_rejection_reason': null,
+        
         'updated_at': FieldValue.serverTimestamp(),
       });
 
@@ -125,36 +125,18 @@ class AuthService {
     }
   }
 
-    // --- UPDATE USER PROFILE ---
-  Future<bool> updateUserProfile({
-    required String userId,
-    required String firstName,
-    required String lastName,
-    required String phone,
-    required String address,
-    String? profilePictureUrl,
-  }) async {
+  // --- CHECK APPROVAL STATUS ---
+  Future<String?> getHandymanApprovalStatus(String userId) async {
     try {
-      final dataToUpdate = {
-        'first_name': firstName,
-        'last_name': lastName,
-        'phone': phone,
-        'address': address,
-        'updated_at': FieldValue.serverTimestamp(),
-      };
-
-      if (profilePictureUrl != null) {
-        dataToUpdate['profile_picture_url'] = profilePictureUrl;
+      final doc = await _db.collection('handymanProfiles').doc(userId).get();
+      if (doc.exists) {
+        return doc.data()?['approval_status'] as String?;
       }
-
-      await _db.collection('users').doc(userId).update(dataToUpdate);
-      return true;
+      return null;
     } catch (e) {
-      debugPrint("Error updating profile: $e");
-      return false;
+      return null;
     }
   }
-
 
   // --- UTILS ---
   Future<void> signOut() async {
@@ -170,11 +152,7 @@ class AuthService {
       final user = _auth.currentUser;
       if (user != null) {
         final doc = await _db.collection('users').doc(user.uid).get();
-        if (doc.exists) {
-          final data = doc.data()!;
-          data['id'] = user.uid; // Important: Add user ID to map
-          return data;
-        }
+        return doc.data();
       }
       return null;
     } catch (e) {

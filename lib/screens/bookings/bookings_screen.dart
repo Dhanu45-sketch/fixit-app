@@ -5,7 +5,7 @@ import '../../services/firestore_service.dart';
 import '../../utils/colors.dart';
 import '../../widgets/booking_card.dart';
 import '../../widgets/loading_indicator.dart';
-// import 'booking_detail_screen.dart'; // Uncomment when file is ready
+import 'booking_detail_screen.dart'; // Import the detail screen
 
 class BookingsScreen extends StatefulWidget {
   const BookingsScreen({super.key});
@@ -131,8 +131,13 @@ class _BookingsScreenState extends State<BookingsScreen> with SingleTickerProvid
         return BookingCard(
           booking: booking,
           onTap: () {
-            // Logic to view details could go here
-            debugPrint("Tapped booking: ${booking.id}");
+            // Navigate to detail screen
+            Navigator.push(
+              context,
+              MaterialPageRoute(
+                builder: (_) => BookingDetailScreen(booking: booking),
+              ),
+            );
           },
         );
       },

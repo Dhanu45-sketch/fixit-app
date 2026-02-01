@@ -10,6 +10,7 @@ class HandymanCard extends StatelessWidget {
   final int jobsCompleted;
   final double hourlyRate;
   final String categoryName;
+  final bool isEmergencyMode; // NEW: Added emergency mode flag
 
   const HandymanCard({
     Key? key,
@@ -18,11 +19,17 @@ class HandymanCard extends StatelessWidget {
     required this.jobsCompleted,
     required this.hourlyRate,
     required this.categoryName,
+    this.isEmergencyMode = false, // Default to false
   }) : super(key: key);
 
   @override
   Widget build(BuildContext context) {
     final firestoreService = FirestoreService();
+
+    // Calculate display rate based on mode
+    final double displayRate = isEmergencyMode 
+        ? FirestoreService.calculateEmergencyPrice(hourlyRate)
+        : hourlyRate;
 
     return GestureDetector(
       onTap: () {
@@ -32,6 +39,7 @@ class HandymanCard extends StatelessWidget {
           MaterialPageRoute(
             builder: (context) => HandymanDetailScreen(
               handymanId: handymanId,
+              isEmergency: isEmergencyMode, // Pass emergency state to detail
             ),
           ),
         );
@@ -42,9 +50,14 @@ class HandymanCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: Colors.white,
           borderRadius: BorderRadius.circular(16),
+          border: isEmergencyMode 
+              ? Border.all(color: Colors.red.withOpacity(0.3), width: 1)
+              : null,
           boxShadow: [
             BoxShadow(
-              color: Colors.black.withOpacity(0.05),
+              color: isEmergencyMode 
+                  ? Colors.red.withOpacity(0.05) 
+                  : Colors.black.withOpacity(0.05),
               blurRadius: 10,
               offset: const Offset(0, 4),
             ),
@@ -59,57 +72,56 @@ class HandymanCard extends StatelessWidget {
             final lastName = userData?['last_name'] ?? '';
             final fullName = firstName.isEmpty ? "Handyman" : "$firstName $lastName";
             final String initial = firstName.isNotEmpty ? firstName[0].toUpperCase() : 'H';
+            final String? profileImage = userData?['profile_image'];
 
             return Row(
               children: [
                 // PROFILE IMAGE / INITIALS
-                // In the HandymanCard widget, replace the CircleAvatar section:
-                FutureBuilder<Map<String, dynamic>?>(
-                  future: firestoreService.getUserProfile(handymanId),
-                  builder: (context, snapshot) {
-                    final userData = snapshot.data;
-                    final firstName = userData?['first_name'] ?? '';
-                    final lastName = userData?['last_name'] ?? '';
-                    final fullName = firstName.isEmpty ? "Handyman" : "$firstName $lastName";
-                    final String initial = firstName.isNotEmpty ? firstName[0].toUpperCase() : 'H';
-                    final String? profileImage = userData?['profile_image'];
-
-                    return CircleAvatar(
-                      radius: 30,
-                      backgroundColor: AppColors.primary.withOpacity(0.1),
-                      backgroundImage: profileImage != null ? NetworkImage(profileImage) : null,
-                      child: profileImage == null
-                          ? (snapshot.connectionState == ConnectionState.waiting
-                          ? const SizedBox(
-                        width: 20,
-                        height: 20,
-                        child: CircularProgressIndicator(strokeWidth: 2),
-                      )
-                          : Text(
-                        initial,
-                        style: const TextStyle(
-                          fontSize: 24,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.primary,
-                        ),
-                      ))
-                          : null,
-                    );
-                  },
+                CircleAvatar(
+                  radius: 30,
+                  backgroundColor: isEmergencyMode 
+                      ? Colors.red.withOpacity(0.1)
+                      : AppColors.primary.withOpacity(0.1),
+                  backgroundImage: profileImage != null ? NetworkImage(profileImage) : null,
+                  child: profileImage == null
+                      ? (snapshot.connectionState == ConnectionState.waiting
+                      ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                      : Text(
+                    initial,
+                    style: TextStyle(
+                      fontSize: 24,
+                      fontWeight: FontWeight.bold,
+                      color: isEmergencyMode ? Colors.red.shade700 : AppColors.primary,
+                    ),
+                  ))
+                      : null,
                 ),
 
+                const SizedBox(width: 16),
 
                 // HANDYMAN INFO
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        fullName,
-                        style: const TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
+                      Row(
+                        children: [
+                          Text(
+                            fullName,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.bold,
+                            ),
+                          ),
+                          if (isEmergencyMode) ...[
+                            const SizedBox(width: 4),
+                            const Icon(Icons.flash_on, color: Colors.orange, size: 16),
+                          ],
+                        ],
                       ),
                       Text(
                         categoryName,
@@ -141,12 +153,19 @@ class HandymanCard extends StatelessWidget {
                 Column(
                   crossAxisAlignment: CrossAxisAlignment.end,
                   children: [
-                    const Text("Hourly", style: TextStyle(fontSize: 10, color: AppColors.textLight)),
                     Text(
-                      "Rs ${hourlyRate.toStringAsFixed(0)}",
-                      style: const TextStyle(
+                      isEmergencyMode ? "Urgent Rate" : "Hourly", 
+                      style: TextStyle(
+                        fontSize: 10, 
+                        color: isEmergencyMode ? Colors.red.shade700 : AppColors.textLight,
+                        fontWeight: isEmergencyMode ? FontWeight.bold : FontWeight.normal,
+                      )
+                    ),
+                    Text(
+                      "Rs ${displayRate.toStringAsFixed(0)}",
+                      style: TextStyle(
                         fontWeight: FontWeight.bold,
-                        color: AppColors.primary,
+                        color: isEmergencyMode ? Colors.red.shade700 : AppColors.primary,
                         fontSize: 16,
                       ),
                     ),

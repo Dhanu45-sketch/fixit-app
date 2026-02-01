@@ -4,7 +4,12 @@ import '../../widgets/handyman_card.dart';
 import '../../utils/colors.dart';
 
 class SearchScreen extends StatefulWidget {
-  const SearchScreen({Key? key}) : super(key: key);
+  final bool isEmergencyMode; // NEW: Emergency mode indicator
+
+  const SearchScreen({
+    Key? key,
+    this.isEmergencyMode = false, // NEW: Default to false
+  }) : super(key: key);
 
   @override
   State<SearchScreen> createState() => _SearchScreenState();
@@ -46,7 +51,10 @@ class _SearchScreenState extends State<SearchScreen> {
     });
 
     try {
-      final results = await _firestoreService.searchHandymen(trimmedQuery);
+      final results = await _firestoreService.searchHandymen(
+        trimmedQuery,
+        emergencyOnly: widget.isEmergencyMode, // NEW: Filter by emergency availability
+      );
 
       setState(() {
         _searchResults = results;
@@ -85,16 +93,53 @@ class _SearchScreenState extends State<SearchScreen> {
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
-        backgroundColor: Colors.white,
+        backgroundColor: widget.isEmergencyMode ? Colors.red.shade700 : Colors.white,
         elevation: 0,
-        iconTheme: const IconThemeData(color: AppColors.textDark),
+        iconTheme: IconThemeData(
+          color: widget.isEmergencyMode ? Colors.white : AppColors.textDark,
+        ),
         title: _buildSearchField(),
       ),
-      body: _isSearching
-          ? const Center(child: CircularProgressIndicator())
-          : _hasSearched
-          ? _buildSearchResults()
-          : _buildSearchSuggestions(),
+      body: Column(
+        children: [
+          // Emergency Mode Banner
+          if (widget.isEmergencyMode)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                border: Border(
+                  bottom: BorderSide(color: Colors.red.shade200),
+                ),
+              ),
+              child: Row(
+                children: [
+                  Icon(Icons.emergency, color: Colors.red.shade700, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      'Emergency Mode Active - Showing 24/7 available handymen (+15% fee)',
+                      style: TextStyle(
+                        color: Colors.red.shade700,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          
+          Expanded(
+            child: _isSearching
+                ? const Center(child: CircularProgressIndicator())
+                : _hasSearched
+                ? _buildSearchResults()
+                : _buildSearchSuggestions(),
+          ),
+        ],
+      ),
     );
   }
 
@@ -102,7 +147,7 @@ class _SearchScreenState extends State<SearchScreen> {
     return Container(
       height: 40,
       decoration: BoxDecoration(
-        color: Colors.grey.shade100,
+        color: widget.isEmergencyMode ? Colors.white : Colors.grey.shade100,
         borderRadius: BorderRadius.circular(8),
       ),
       child: TextField(
@@ -111,16 +156,31 @@ class _SearchScreenState extends State<SearchScreen> {
         textInputAction: TextInputAction.search,
         onSubmitted: _performSearch,
         onChanged: (value) {
-          // Re-render to show/hide the clear button
           setState(() {});
         },
+        style: TextStyle(
+          color: widget.isEmergencyMode ? Colors.red.shade700 : AppColors.textDark,
+        ),
         decoration: InputDecoration(
-          hintText: 'Search categories...',
-          hintStyle: const TextStyle(fontSize: 14, color: Colors.grey),
-          prefixIcon: const Icon(Icons.search, size: 20),
+          hintText: widget.isEmergencyMode 
+              ? 'Search emergency specialists...'
+              : 'Search categories...',
+          hintStyle: TextStyle(
+            fontSize: 14, 
+            color: widget.isEmergencyMode ? Colors.red.shade300 : Colors.grey,
+          ),
+          prefixIcon: Icon(
+            Icons.search, 
+            size: 20,
+            color: widget.isEmergencyMode ? Colors.red.shade700 : AppColors.textLight,
+          ),
           suffixIcon: _searchController.text.isNotEmpty
               ? IconButton(
-            icon: const Icon(Icons.cancel, size: 20),
+            icon: Icon(
+              Icons.cancel, 
+              size: 20,
+              color: widget.isEmergencyMode ? Colors.red.shade700 : AppColors.textLight,
+            ),
             onPressed: _clearSearch,
           )
               : null,
@@ -145,6 +205,7 @@ class _SearchScreenState extends State<SearchScreen> {
           rating: (data['rating_avg'] ?? 0.0).toDouble(),
           jobsCompleted: data['jobs_completed'] ?? 0,
           hourlyRate: (data['hourly_rate'] ?? 0.0).toDouble(),
+          isEmergencyMode: widget.isEmergencyMode, // NEW: Pass emergency state
         );
       },
     );
@@ -157,12 +218,23 @@ class _SearchScreenState extends State<SearchScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (_recentSearches.isNotEmpty) ...[
-            const Text('Recent Searches', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+            const Text(
+              'Recent Searches', 
+              style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+            ),
             const SizedBox(height: 12),
             Wrap(
               spacing: 8,
               children: _recentSearches.map((s) => ActionChip(
                 label: Text(s, style: const TextStyle(fontSize: 13)),
+                backgroundColor: widget.isEmergencyMode 
+                    ? Colors.red.shade50 
+                    : AppColors.background,
+                side: BorderSide(
+                  color: widget.isEmergencyMode 
+                      ? Colors.red.shade200 
+                      : Colors.grey.shade300,
+                ),
                 onPressed: () {
                   _searchController.text = s;
                   _performSearch(s);
@@ -171,18 +243,76 @@ class _SearchScreenState extends State<SearchScreen> {
             ),
             const SizedBox(height: 24),
           ],
-          const Text('Popular Categories', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
+          Text(
+            widget.isEmergencyMode 
+                ? 'Emergency Categories'
+                : 'Popular Categories',
+            style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 16),
+          ),
           const SizedBox(height: 12),
           Wrap(
             spacing: 8,
             children: _popularSearches.map((s) => ActionChip(
               label: Text(s, style: const TextStyle(fontSize: 13)),
+              backgroundColor: widget.isEmergencyMode 
+                  ? Colors.red.shade50 
+                  : AppColors.background,
+              side: BorderSide(
+                color: widget.isEmergencyMode 
+                    ? Colors.red.shade200 
+                    : Colors.grey.shade300,
+              ),
+              avatar: widget.isEmergencyMode 
+                  ? Icon(Icons.emergency, size: 16, color: Colors.red.shade700)
+                  : null,
               onPressed: () {
                 _searchController.text = s;
                 _performSearch(s);
               },
             )).toList(),
           ),
+          
+          if (widget.isEmergencyMode) ...[
+            const SizedBox(height: 24),
+            Container(
+              padding: const EdgeInsets.all(16),
+              decoration: BoxDecoration(
+                color: Colors.red.shade50,
+                borderRadius: BorderRadius.circular(12),
+                border: Border.all(color: Colors.red.shade200),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.info_outline, color: Colors.red.shade700, size: 20),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Emergency Service Info',
+                        style: TextStyle(
+                          color: Colors.red.shade900,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    '• 24/7 availability\n'
+                    '• Priority response time\n'
+                    '• 15% emergency surcharge\n'
+                    '• Immediate assistance',
+                    style: TextStyle(
+                      color: Colors.red.shade700,
+                      fontSize: 13,
+                      height: 1.5,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -193,14 +323,27 @@ class _SearchScreenState extends State<SearchScreen> {
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
-          Icon(Icons.search_off, size: 64, color: Colors.grey.shade300),
+          Icon(
+            widget.isEmergencyMode ? Icons.emergency_share : Icons.search_off,
+            size: 64,
+            color: widget.isEmergencyMode ? Colors.red.shade200 : Colors.grey.shade300,
+          ),
           const SizedBox(height: 16),
           Text(
-            "No results for '$_searchQuery'",
+            widget.isEmergencyMode 
+                ? "No emergency specialists found for '$_searchQuery'"
+                : "No results for '$_searchQuery'",
             style: const TextStyle(color: AppColors.textLight, fontSize: 16),
+            textAlign: TextAlign.center,
           ),
           const SizedBox(height: 8),
-          const Text("Try searching for 'Plumbing' or 'Electrical'", style: TextStyle(color: Colors.grey, fontSize: 14)),
+          Text(
+            widget.isEmergencyMode
+                ? "Try searching for common services like 'Plumbing' or 'Electrical'"
+                : "Try searching for 'Plumbing' or 'Electrical'",
+            style: const TextStyle(color: Colors.grey, fontSize: 14),
+            textAlign: TextAlign.center,
+          ),
         ],
       ),
     );

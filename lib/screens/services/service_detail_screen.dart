@@ -7,10 +7,12 @@ import '../../utils/colors.dart';
 
 class ServiceDetailScreen extends StatefulWidget {
   final ServiceCategory category;
+  final bool isEmergencyMode; // NEW: Emergency mode indicator
 
   const ServiceDetailScreen({
     Key? key,
     required this.category,
+    this.isEmergencyMode = false, // NEW: Default to false
   }) : super(key: key);
 
   @override
@@ -38,24 +40,79 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
           SliverAppBar(
             expandedHeight: 180,
             pinned: true,
-            backgroundColor: AppColors.primary,
+            backgroundColor: widget.isEmergencyMode ? Colors.red.shade700 : AppColors.primary,
             flexibleSpace: FlexibleSpaceBar(
-              title: Text(
-                widget.category.name,
-                style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+              title: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    widget.category.name,
+                    style: const TextStyle(fontWeight: FontWeight.bold, color: Colors.white),
+                  ),
+                  if (widget.isEmergencyMode) ...[
+                    const SizedBox(width: 8),
+                    Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: BoxDecoration(
+                        color: Colors.white,
+                        borderRadius: BorderRadius.circular(4),
+                      ),
+                      child: Text(
+                        'EMERGENCY',
+                        style: TextStyle(
+                          color: Colors.red.shade700,
+                          fontSize: 10,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  ],
+                ],
               ),
               background: Container(
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   gradient: LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [AppColors.primary, AppColors.secondary],
+                    colors: widget.isEmergencyMode 
+                        ? [Colors.red.shade700, Colors.red.shade900]
+                        : [AppColors.primary, AppColors.secondary],
                   ),
                 ),
                 child: Center(
-                  child: Text(
-                    widget.category.icon,
-                    style: const TextStyle(fontSize: 64),
+                  child: Column(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    children: [
+                      Text(
+                        widget.category.icon,
+                        style: const TextStyle(fontSize: 64),
+                      ),
+                      if (widget.isEmergencyMode) ...[
+                        const SizedBox(height: 8),
+                        Container(
+                          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withOpacity(0.2),
+                            borderRadius: BorderRadius.circular(8),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(Icons.emergency, color: Colors.white, size: 16),
+                              SizedBox(width: 6),
+                              Text(
+                                '+15% Emergency Fee',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 12,
+                                  fontWeight: FontWeight.bold,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ],
                   ),
                 ),
               ),
@@ -79,7 +136,10 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                     scrollDirection: Axis.horizontal,
                     child: Row(
                       children: [
-                        const Text('Sort by:', style: TextStyle(fontWeight: FontWeight.bold)),
+                        Text(
+                          widget.isEmergencyMode ? 'Emergency Sort:' : 'Sort by:',
+                          style: const TextStyle(fontWeight: FontWeight.bold),
+                        ),
                         const SizedBox(width: 12),
                         _buildSortChip('Rating', 'rating_avg'),
                         _buildSortChip('Price', 'hourly_rate'),
@@ -94,7 +154,11 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
 
           // The List of Handymen
           StreamBuilder<List<Map<String, dynamic>>>(
-            stream: _firestoreService.getHandymenByCategory(widget.category.id, _sortBy),
+            stream: _firestoreService.getHandymenByCategory(
+              widget.category.id, 
+              _sortBy,
+              emergencyOnly: widget.isEmergencyMode, // NEW: Filter by emergency availability
+            ),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const SliverFillRemaining(child: Center(child: CircularProgressIndicator()));
@@ -107,8 +171,44 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
               final handymen = snapshot.data ?? [];
 
               if (handymen.isEmpty) {
-                return const SliverFillRemaining(
-                  child: Center(child: Text('No specialists available in this category.')),
+                return SliverFillRemaining(
+                  child: Center(
+                    child: Padding(
+                      padding: const EdgeInsets.all(32),
+                      child: Column(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          Icon(
+                            widget.isEmergencyMode ? Icons.emergency : Icons.person_search,
+                            size: 80,
+                            color: Colors.grey.shade300,
+                          ),
+                          const SizedBox(height: 16),
+                          Text(
+                            widget.isEmergencyMode
+                                ? 'No emergency specialists available'
+                                : 'No specialists available in this category.',
+                            textAlign: TextAlign.center,
+                            style: const TextStyle(
+                              fontSize: 16,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                          if (widget.isEmergencyMode) ...[
+                            const SizedBox(height: 8),
+                            const Text(
+                              'Try switching to standard service mode',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                fontSize: 14,
+                                color: AppColors.textLight,
+                              ),
+                            ),
+                          ],
+                        ],
+                      ),
+                    ),
+                  ),
                 );
               }
 
@@ -116,16 +216,16 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
                 padding: const EdgeInsets.all(20),
                 sliver: SliverList(
                   delegate: SliverChildBuilderDelegate(
-                        (context, index) {
+                    (context, index) {
                       final data = handymen[index];
 
-                      // FIX: Passing only required parameters to match the updated HandymanCard
                       return HandymanCard(
-                        handymanId: data['id'] ?? '', // Uses document ID
+                        handymanId: data['id'] ?? '',
                         rating: (data['rating_avg'] ?? 0.0).toDouble(),
-                        jobsCompleted: data['jobs_completed'] ?? 0, // Synced field name
+                        jobsCompleted: data['jobs_completed'] ?? 0,
                         hourlyRate: (data['hourly_rate'] ?? 0.0).toDouble(),
                         categoryName: widget.category.name,
+                        isEmergencyMode: widget.isEmergencyMode, // NEW: Pass emergency state
                       );
                     },
                     childCount: handymen.length,
@@ -149,7 +249,7 @@ class _ServiceDetailScreenState extends State<ServiceDetailScreen> {
         onSelected: (bool selected) {
           if (selected) setState(() => _sortBy = value);
         },
-        selectedColor: AppColors.primary,
+        selectedColor: widget.isEmergencyMode ? Colors.red.shade700 : AppColors.primary,
         checkmarkColor: Colors.white,
         labelStyle: TextStyle(
           color: isSelected ? Colors.white : AppColors.textDark,

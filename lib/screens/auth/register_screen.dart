@@ -1,19 +1,17 @@
-
-import 'dart:io';
+// lib/screens/auth/register_screen.dart
 import 'package:flutter/material.dart';
-import 'package:firebase_auth/firebase_auth.dart';
-import 'package:fixit_app/services/firestore_service.dart';
-import 'package:fixit_app/services/storage_service.dart';
+import '../../services/auth_service.dart';
+import '../../services/firestore_service.dart';
 import '../../utils/colors.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/custom_textfield.dart';
-import '../../services/auth_service.dart';
-import 'login_screen.dart';
+import '../home/customer_home_screen.dart';
+import 'approval_pending_screen.dart'; // NEW: Import approval pending screen
 
 class RegisterScreen extends StatefulWidget {
   final bool isHandyman;
 
-  const RegisterScreen({Key? key, this.isHandyman = false}) : super(key: key);
+  const RegisterScreen({super.key, this.isHandyman = false});
 
   @override
   State<RegisterScreen> createState() => _RegisterScreenState();
@@ -23,27 +21,28 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _formKey = GlobalKey<FormState>();
   final _authService = AuthService();
   final _firestoreService = FirestoreService();
-  final _storageService = StorageService();
 
-  // Controllers
   final _firstNameController = TextEditingController();
   final _lastNameController = TextEditingController();
   final _emailController = TextEditingController();
   final _phoneController = TextEditingController();
   final _passwordController = TextEditingController();
   final _confirmPasswordController = TextEditingController();
-  final _bioController = TextEditingController();
-  final _experienceController = TextEditingController();
-  final _hourlyRateController = TextEditingController();
 
-  // State
-  bool _isLoading = false;
-  String? _errorMessage;
-  bool _obscurePassword = true;
+  // Handyman Specific Fields
   String? _selectedCategoryId;
   String? _selectedCategoryName;
-  File? _profileImageFile;
-  final List<File> _certificateFiles = [];
+  final _experienceController = TextEditingController();
+  final _hourlyRateController = TextEditingController();
+  final _bioController = TextEditingController();
+
+  // NEW: Emergency opt-in
+  bool _acceptsEmergencies = false;
+
+  bool _obscurePassword = true;
+  bool _obscureConfirmPassword = true;
+  bool _isLoading = false;
+  String? _errorMessage;
 
   @override
   void dispose() {
@@ -53,28 +52,19 @@ class _RegisterScreenState extends State<RegisterScreen> {
     _phoneController.dispose();
     _passwordController.dispose();
     _confirmPasswordController.dispose();
-    _bioController.dispose();
     _experienceController.dispose();
     _hourlyRateController.dispose();
+    _bioController.dispose();
     super.dispose();
-  }
-
-  Future<void> _pickProfileImage() async {
-    final file = await _storageService.pickImageFromGallery();
-    if (file != null) setState(() => _profileImageFile = file);
-  }
-
-  Future<void> _pickCertificates() async {
-    final files = await _storageService.pickMultipleImages();
-    setState(() => _certificateFiles.addAll(files));
-  }
-
-  void _removeCertificate(int index) {
-    setState(() => _certificateFiles.removeAt(index));
   }
 
   Future<void> _handleRegister() async {
     if (!_formKey.currentState!.validate()) return;
+
+    if (_passwordController.text != _confirmPasswordController.text) {
+      setState(() => _errorMessage = 'Passwords do not match');
+      return;
+    }
 
     if (widget.isHandyman && _selectedCategoryId == null) {
       setState(() => _errorMessage = 'Please select a service category');
@@ -87,9 +77,8 @@ class _RegisterScreenState extends State<RegisterScreen> {
     });
 
     try {
-      UserCredential? userCredential;
       if (widget.isHandyman) {
-        userCredential = await _authService.registerHandyman(
+        await _authService.registerHandyman(
           firstName: _firstNameController.text.trim(),
           lastName: _lastNameController.text.trim(),
           email: _emailController.text.trim(),
@@ -97,259 +86,420 @@ class _RegisterScreenState extends State<RegisterScreen> {
           password: _passwordController.text,
           categoryId: _selectedCategoryId!,
           categoryName: _selectedCategoryName!,
-          experience: int.parse(_experienceController.text.trim()),
-          hourlyRate: double.parse(_hourlyRateController.text.trim()),
-          bio: _bioController.text.trim(),
+          experience: int.tryParse(_experienceController.text) ?? 0,
+          hourlyRate: double.tryParse(_hourlyRateController.text) ?? 0.0,
+          bio: _bioController.text.trim().isEmpty ? null : _bioController.text.trim(),
+          acceptsEmergencies: _acceptsEmergencies, // NEW: Pass emergency opt-in
         );
+
+        if (mounted) {
+          // NEW: Navigate to approval pending screen instead of home
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const ApprovalPendingScreen()),
+          );
+        }
       } else {
-        userCredential = await _authService.registerCustomer(
+        await _authService.registerCustomer(
           firstName: _firstNameController.text.trim(),
           lastName: _lastNameController.text.trim(),
           email: _emailController.text.trim(),
           phone: _phoneController.text.trim(),
           password: _passwordController.text,
         );
-      }
 
-      if (userCredential == null) throw Exception("User creation failed.");
-      final userId = userCredential.user!.uid;
-
-      final profilePicFuture = _profileImageFile != null
-          ? _storageService.uploadProfilePicture(userId: userId, imageFile: _profileImageFile!)
-          : Future.value(null);
-
-      final certificatesFuture = (widget.isHandyman && _certificateFiles.isNotEmpty)
-          ? _storageService.uploadMultipleCertificates(userId: userId, imageFiles: _certificateFiles)
-          : Future.value(<String>[]);
-      
-      final results = await Future.wait([profilePicFuture, certificatesFuture]);
-      final profileImageUrl = results[0] as String?;
-      final certificateUrls = results[1] as List<String>;
-
-      final List<Future<void>> updateFutures = [];
-      if (profileImageUrl != null) {
-        updateFutures.add(_firestoreService.updateUserProfile(userId, {'profile_image': profileImageUrl}));
-      }
-      if (certificateUrls.isNotEmpty) {
-        updateFutures.add(_firestoreService.updateHandymanProfile(userId, {'certificates': certificateUrls}));
-      }
-      if (updateFutures.isNotEmpty) {
-        await Future.wait(updateFutures);
-      }
-
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Registration successful! Please login.'), backgroundColor: Colors.green),
-        );
-        Navigator.of(context).pushAndRemoveUntil(
-          MaterialPageRoute(builder: (context) => LoginScreen(isHandyman: widget.isHandyman)),
-          (route) => false,
-        );
+        if (mounted) {
+          Navigator.of(context).pushReplacement(
+            MaterialPageRoute(builder: (_) => const CustomerHomeScreen()),
+          );
+        }
       }
     } catch (e) {
-      setState(() => _errorMessage = "Registration failed: ${e.toString()}");
-    } finally {
-      if (mounted) setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() {
+          _errorMessage = e.toString().replaceAll('Exception: ', '');
+          _isLoading = false;
+        });
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
+    final themeColor = widget.isHandyman ? AppColors.secondary : AppColors.primary;
+
     return Scaffold(
-      appBar: AppBar(title: Text(widget.isHandyman ? 'Handyman Registration' : 'Create Account')),
-      body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            children: [
-              if (_errorMessage != null) 
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 16.0),
-                  child: Text(_errorMessage!, style: const TextStyle(color: AppColors.error, fontWeight: FontWeight.bold)),
+      appBar: AppBar(
+        title: Text(widget.isHandyman ? 'Handyman Registration' : 'Customer Registration'),
+        backgroundColor: themeColor,
+        foregroundColor: Colors.white,
+      ),
+      body: SafeArea(
+        child: SingleChildScrollView(
+          padding: const EdgeInsets.all(24.0),
+          child: Form(
+            key: _formKey,
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                if (_errorMessage != null) _buildErrorWidget(),
+
+                const Text(
+                  'Basic Information',
+                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
                 ),
-              _buildProfilePicturePicker(),
-              const SizedBox(height: 20),
-              ..._buildCommonFields(),
-              if (widget.isHandyman) ..._buildHandymanFields(),
-              const SizedBox(height: 30),
-              CustomButton(
-                text: 'Register',
-                onPressed: _handleRegister,
-                isLoading: _isLoading,
+                const SizedBox(height: 16),
+
+                _buildBasicFields(),
+
+                if (widget.isHandyman) ...[
+                  const SizedBox(height: 32),
+                  const Text(
+                    'Professional Information',
+                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+                  ),
+                  const SizedBox(height: 16),
+                  _buildCategoryDropdown(),
+                  const SizedBox(height: 16),
+                  _buildProfessionalFields(),
+
+                  // NEW: Emergency Services Section
+                  const SizedBox(height: 32),
+                  _buildEmergencySection(),
+                ],
+
+                const SizedBox(height: 32),
+
+                CustomButton(
+                  text: widget.isHandyman ? 'Register as Handyman' : 'Register as Customer',
+                  onPressed: _handleRegister,
+                  isLoading: _isLoading,
+                ),
+
+                const SizedBox(height: 16),
+                _buildLoginRedirect(),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // NEW: Emergency Services Section
+  Widget _buildEmergencySection() {
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: _acceptsEmergencies ? Colors.red.shade50 : AppColors.background,
+        borderRadius: BorderRadius.circular(12),
+        border: Border.all(
+          color: _acceptsEmergencies ? Colors.red.shade300 : Colors.grey.shade300,
+          width: _acceptsEmergencies ? 2 : 1,
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(
+                Icons.emergency,
+                color: _acceptsEmergencies ? Colors.red.shade700 : AppColors.textLight,
+              ),
+              const SizedBox(width: 12),
+              const Expanded(
+                child: Text(
+                  'Emergency Services',
+                  style: TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.bold,
+                  ),
+                ),
+              ),
+              Switch(
+                value: _acceptsEmergencies,
+                onChanged: (value) => setState(() => _acceptsEmergencies = value),
+                activeColor: Colors.red.shade700,
               ),
             ],
           ),
-        ),
-      ),
-    );
-  }
-
-  Widget _buildProfilePicturePicker() {
-    return GestureDetector(
-      onTap: _pickProfileImage,
-      child: CircleAvatar(
-        radius: 50,
-        backgroundColor: Colors.grey.shade200,
-        backgroundImage: _profileImageFile != null ? FileImage(_profileImageFile!) : null,
-        child: _profileImageFile == null 
-            ? Icon(Icons.add_a_photo, size: 40, color: Colors.grey.shade500) 
-            : null,
-      ),
-    );
-  }
-
-  List<Widget> _buildCommonFields() {
-    return [
-      CustomTextField(
-        label: 'First Name', hint: 'John', prefixIcon: Icons.person,
-        controller: _firstNameController,
-        validator: (v) => v!.isEmpty ? 'Required' : null,
-      ),
-      const SizedBox(height: 16),
-      CustomTextField(
-        label: 'Last Name', hint: 'Doe', prefixIcon: Icons.person_outline,
-        controller: _lastNameController,
-        validator: (v) => v!.isEmpty ? 'Required' : null,
-      ),
-      const SizedBox(height: 16),
-      CustomTextField(
-        label: 'Email', hint: 'you@example.com', prefixIcon: Icons.email_outlined,
-        controller: _emailController,
-        keyboardType: TextInputType.emailAddress,
-        validator: (v) => v!.isEmpty ? 'Required' : null,
-      ),
-      const SizedBox(height: 16),
-      CustomTextField(
-        label: 'Phone', hint: '07...', prefixIcon: Icons.phone,
-        controller: _phoneController,
-        keyboardType: TextInputType.phone,
-        validator: (v) => v!.isEmpty ? 'Required' : null,
-      ),
-      const SizedBox(height: 16),
-      CustomTextField(
-        label: 'Password', hint: '********', prefixIcon: Icons.lock_outline,
-        controller: _passwordController,
-        obscureText: _obscurePassword,
-        validator: (v) => v!.length < 6 ? '6+ characters required' : null,
-        suffixIcon: IconButton(
-          icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility),
-          onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
-        ),
-      ),
-      const SizedBox(height: 16),
-      CustomTextField(
-        label: 'Confirm Password', hint: '********', prefixIcon: Icons.lock,
-        controller: _confirmPasswordController,
-        obscureText: true,
-        validator: (v) => v != _passwordController.text ? 'Passwords do not match' : null,
-      ),
-    ];
-  }
-
-  List<Widget> _buildHandymanFields() {
-    return [
-      const SizedBox(height: 20),
-      const Divider(),
-      const SizedBox(height: 20),
-      _buildCategoryDropdown(),
-      const SizedBox(height: 16),
-      Row(
-        children: [
-          Expanded(
-            child: CustomTextField(
-              label: 'Experience (Years)', hint: '5', prefixIcon: Icons.star,
-              controller: _experienceController,
-              keyboardType: TextInputType.number,
-              validator: (v) => v!.isEmpty ? 'Required' : null,
+          const SizedBox(height: 12),
+          Text(
+            _acceptsEmergencies
+                ? '✅ You will receive emergency job requests'
+                : 'Offer 24/7 emergency services to customers',
+            style: TextStyle(
+              fontSize: 13,
+              color: _acceptsEmergencies ? Colors.red.shade700 : AppColors.textLight,
             ),
           ),
-          const SizedBox(width: 16),
+          if (_acceptsEmergencies) ...[
+            const SizedBox(height: 12),
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: Colors.red.shade200),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Row(
+                    children: [
+                      Icon(Icons.trending_up, color: Colors.red.shade700, size: 20),
+                      const SizedBox(width: 8),
+                      Text(
+                        'Earn 15% More!',
+                        style: TextStyle(
+                          color: Colors.red.shade700,
+                          fontWeight: FontWeight.bold,
+                          fontSize: 14,
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 8),
+                  Text(
+                    'Emergency jobs pay 15% more than standard rates. '
+                        'Customers pay extra for urgent, priority service.',
+                    style: TextStyle(
+                      fontSize: 12,
+                      color: Colors.grey.shade700,
+                    ),
+                  ),
+                  const SizedBox(height: 8),
+                  const Divider(),
+                  const SizedBox(height: 8),
+                  Row(
+                    children: const [
+                      Icon(Icons.check_circle, color: AppColors.success, size: 16),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Priority job notifications',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: const [
+                      Icon(Icons.check_circle, color: AppColors.success, size: 16),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Higher earnings potential',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                  const SizedBox(height: 4),
+                  Row(
+                    children: const [
+                      Icon(Icons.check_circle, color: AppColors.success, size: 16),
+                      SizedBox(width: 8),
+                      Expanded(
+                        child: Text(
+                          'Build emergency service reputation',
+                          style: TextStyle(fontSize: 12),
+                        ),
+                      ),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ],
+      ),
+    );
+  }
+
+  Widget _buildErrorWidget() {
+    return Container(
+      padding: const EdgeInsets.all(12),
+      margin: const EdgeInsets.only(bottom: 20),
+      decoration: BoxDecoration(
+        color: Colors.red.shade50,
+        borderRadius: BorderRadius.circular(8),
+        border: Border.all(color: Colors.red.shade200),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.error_outline, color: Colors.red.shade700),
+          const SizedBox(width: 8),
           Expanded(
-            child: CustomTextField(
-              label: 'Hourly Rate (Rs)', hint: '1500', prefixIcon: Icons.attach_money,
-              controller: _hourlyRateController,
-              keyboardType: TextInputType.number,
-              validator: (v) => v!.isEmpty ? 'Required' : null,
+            child: Text(
+              _errorMessage!,
+              style: TextStyle(color: Colors.red.shade700, fontSize: 13),
             ),
           ),
         ],
       ),
-      const SizedBox(height: 16),
-      CustomTextField(
-        label: 'Bio', hint: 'Skills, work history...', prefixIcon: Icons.description,
-        controller: _bioController,
-        maxLines: 3,
-      ),
-      const SizedBox(height: 20),
-      _buildCertificatesSection(),
-    ];
+    );
+  }
+
+  Widget _buildBasicFields() {
+    return Column(
+      children: [
+        CustomTextField(
+          label: 'First Name',
+          hint: 'Enter your first name',
+          prefixIcon: Icons.person_outline,
+          controller: _firstNameController,
+          validator: (value) => value?.trim().isEmpty ?? true ? 'Required' : null,
+        ),
+        const SizedBox(height: 16),
+        CustomTextField(
+          label: 'Last Name',
+          hint: 'Enter your last name',
+          prefixIcon: Icons.person_outline,
+          controller: _lastNameController,
+          validator: (value) => value?.trim().isEmpty ?? true ? 'Required' : null,
+        ),
+        const SizedBox(height: 16),
+        CustomTextField(
+          label: 'Email',
+          hint: 'Enter your email',
+          prefixIcon: Icons.email_outlined,
+          controller: _emailController,
+          keyboardType: TextInputType.emailAddress,
+          validator: (value) {
+            if (value?.trim().isEmpty ?? true) return 'Required';
+            if (!value!.contains('@')) return 'Invalid email';
+            return null;
+          },
+        ),
+        const SizedBox(height: 16),
+        CustomTextField(
+          label: 'Phone Number',
+          hint: '07XXXXXXXX',
+          prefixIcon: Icons.phone_outlined,
+          controller: _phoneController,
+          keyboardType: TextInputType.phone,
+          validator: (value) => value?.trim().isEmpty ?? true ? 'Required' : null,
+        ),
+        const SizedBox(height: 16),
+        CustomTextField(
+          label: 'Password',
+          hint: 'Min 8 characters',
+          prefixIcon: Icons.lock_outline,
+          controller: _passwordController,
+          obscureText: _obscurePassword,
+          suffixIcon: IconButton(
+            icon: Icon(_obscurePassword ? Icons.visibility_off : Icons.visibility),
+            onPressed: () => setState(() => _obscurePassword = !_obscurePassword),
+          ),
+          validator: (value) => (value?.length ?? 0) < 8 ? 'Min 8 characters' : null,
+        ),
+        const SizedBox(height: 16),
+        CustomTextField(
+          label: 'Confirm Password',
+          hint: 'Re-enter password',
+          prefixIcon: Icons.lock_outline,
+          controller: _confirmPasswordController,
+          obscureText: _obscureConfirmPassword,
+          suffixIcon: IconButton(
+            icon: Icon(_obscureConfirmPassword ? Icons.visibility_off : Icons.visibility),
+            onPressed: () => setState(() => _obscureConfirmPassword = !_obscureConfirmPassword),
+          ),
+          validator: (value) => value?.isEmpty ?? true ? 'Required' : null,
+        ),
+      ],
+    );
   }
 
   Widget _buildCategoryDropdown() {
     return StreamBuilder<List<Map<String, dynamic>>>(
       stream: _firestoreService.getServiceCategories(),
       builder: (context, snapshot) {
-        if (!snapshot.hasData) return const Center(child: CircularProgressIndicator());
+        if (snapshot.connectionState == ConnectionState.waiting) {
+          return const Center(child: CircularProgressIndicator());
+        }
+        if (snapshot.hasError || !snapshot.hasData || snapshot.data!.isEmpty) {
+          return const Padding(
+            padding: EdgeInsets.all(8.0),
+            child: Text(
+              'No categories found. Ensure collection name is "serviceCategories" in Firestore.',
+              style: TextStyle(color: Colors.orange, fontSize: 12),
+            ),
+          );
+        }
+
+        final categories = snapshot.data!;
+
         return DropdownButtonFormField<String>(
-          value: _selectedCategoryId,
-          hint: const Text('Select Service Category'),
           decoration: InputDecoration(
+            labelText: 'Service Category',
+            prefixIcon: const Icon(Icons.category_outlined),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-            prefixIcon: const Icon(Icons.category)
+            focusedBorder: OutlineInputBorder(
+              borderRadius: BorderRadius.circular(12),
+              borderSide: const BorderSide(color: AppColors.secondary, width: 2),
+            ),
           ),
-          items: snapshot.data!.map<DropdownMenuItem<String>>((category) {
+          value: _selectedCategoryId,
+          items: categories.map((cat) {
             return DropdownMenuItem<String>(
-              value: category['id'].toString(), 
-              child: Text(category['name'])
+              value: cat['id'],
+              child: Text('${cat['icon'] ?? '🔧'} ${cat['name'].toString().replaceAll('_', ' ')}'),
             );
           }).toList(),
-          onChanged: (value) {
-            final selected = snapshot.data!.firstWhere((c) => c['id'] == value, orElse: () => {});
-            if (selected.isNotEmpty) {
-              setState(() {
-                _selectedCategoryId = value;
-                _selectedCategoryName = selected['name'];
-              });
-            }
+          onChanged: (val) {
+            setState(() {
+              _selectedCategoryId = val;
+              _selectedCategoryName = categories.firstWhere((c) => c['id'] == val)['name'];
+            });
           },
-          validator: (v) => v == null ? 'Category is required' : null,
+          validator: (value) => value == null ? 'Required' : null,
         );
       },
     );
   }
 
-  Widget _buildCertificatesSection() {
+  Widget _buildProfessionalFields() {
     return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        const Text('Certificates (Optional)', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16)),
-        const SizedBox(height: 8),
-        Container(
-          padding: const EdgeInsets.all(8),
-          decoration: BoxDecoration(
-            color: Colors.grey.shade100,
-            borderRadius: BorderRadius.circular(8),
-            border: Border.all(color: Colors.grey.shade300)
-          ),
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              ..._certificateFiles.map((file) {
-                return Chip(
-                  label: Text(file.path.split('/').last, overflow: TextOverflow.ellipsis), 
-                  onDeleted: () => _removeCertificate(_certificateFiles.indexOf(file)),
-                  deleteIconColor: AppColors.error,
-                  );
-              }).toList(),
-              ActionChip(
-                avatar: const Icon(Icons.add_a_photo, size: 18),
-                label: const Text('Add Files'),
-                onPressed: _pickCertificates,
-              ),
-            ],
-          ),
+        CustomTextField(
+          label: 'Years of Experience',
+          hint: 'e.g., 5',
+          prefixIcon: Icons.work_outline,
+          controller: _experienceController,
+          keyboardType: TextInputType.number,
+          validator: (value) => value?.isEmpty ?? true ? 'Required' : null,
+        ),
+        const SizedBox(height: 16),
+        CustomTextField(
+          label: 'Hourly Rate (LKR)',
+          hint: 'e.g., 1500',
+          prefixIcon: Icons.payments_outlined,
+          controller: _hourlyRateController,
+          keyboardType: TextInputType.number,
+          validator: (value) => value?.isEmpty ?? true ? 'Required' : null,
+        ),
+        const SizedBox(height: 16),
+        CustomTextField(
+          label: 'Bio',
+          hint: 'Tell customers about your expertise...',
+          prefixIcon: Icons.info_outline,
+          controller: _bioController,
+          maxLines: 3,
+        ),
+      ],
+    );
+  }
+
+  Widget _buildLoginRedirect() {
+    return Row(
+      mainAxisAlignment: MainAxisAlignment.center,
+      children: [
+        const Text('Already have an account? ', style: TextStyle(color: AppColors.textLight)),
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: const Text('Login', style: TextStyle(color: AppColors.primary, fontWeight: FontWeight.bold)),
         ),
       ],
     );

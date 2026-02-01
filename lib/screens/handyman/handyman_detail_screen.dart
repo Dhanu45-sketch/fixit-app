@@ -4,14 +4,17 @@ import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../widgets/custom_button.dart';
 import '../../utils/colors.dart';
 import '../../widgets/booking_bottom_sheet.dart';
-import '../../widgets/reviews_section.dart'; // NEW IMPORT
+import '../../widgets/reviews_section.dart';
+import '../../services/firestore_service.dart';
 
 class HandymanDetailScreen extends StatefulWidget {
   final String handymanId;
+  final bool isEmergency; // NEW: Emergency mode indicator
 
   const HandymanDetailScreen({
     Key? key,
     required this.handymanId,
+    this.isEmergency = false, // NEW: Default to false
   }) : super(key: key);
 
   @override
@@ -57,7 +60,7 @@ class _HandymanDetailScreenState extends State<HandymanDetailScreen> {
                   _buildStatsRow(hData),
                   _buildAboutSection(hData, uData ?? {}),
 
-                  // NEW: Reviews Section
+                  // Reviews Section
                   SliverToBoxAdapter(
                     child: Padding(
                       padding: const EdgeInsets.only(top: 20),
@@ -84,27 +87,55 @@ class _HandymanDetailScreenState extends State<HandymanDetailScreen> {
     return SliverAppBar(
       expandedHeight: 250,
       pinned: true,
-      backgroundColor: AppColors.primary,
+      backgroundColor: widget.isEmergency ? Colors.red.shade700 : AppColors.primary,
       flexibleSpace: FlexibleSpaceBar(
         background: Container(
-          decoration: const BoxDecoration(
+          decoration: BoxDecoration(
             gradient: LinearGradient(
               begin: Alignment.topCenter,
               end: Alignment.bottomCenter,
-              colors: [AppColors.primary, AppColors.secondary],
+              colors: widget.isEmergency 
+                  ? [Colors.red.shade700, Colors.red.shade900]
+                  : [AppColors.primary, AppColors.secondary],
             ),
           ),
           child: Column(
             mainAxisAlignment: MainAxisAlignment.center,
             children: [
               const SizedBox(height: 40),
-              CircleAvatar(
-                radius: 45,
-                backgroundColor: Colors.white,
-                child: Text(
-                  name.isNotEmpty ? name[0].toUpperCase() : 'H',
-                  style: const TextStyle(fontSize: 32, fontWeight: FontWeight.bold, color: AppColors.primary),
-                ),
+              Stack(
+                children: [
+                  CircleAvatar(
+                    radius: 45,
+                    backgroundColor: Colors.white,
+                    child: Text(
+                      name.isNotEmpty ? name[0].toUpperCase() : 'H',
+                      style: TextStyle(
+                        fontSize: 32, 
+                        fontWeight: FontWeight.bold, 
+                        color: widget.isEmergency ? Colors.red.shade700 : AppColors.primary,
+                      ),
+                    ),
+                  ),
+                  if (widget.isEmergency)
+                    Positioned(
+                      right: 0,
+                      bottom: 0,
+                      child: Container(
+                        padding: const EdgeInsets.all(6),
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.red.shade700, width: 2),
+                        ),
+                        child: Icon(
+                          Icons.emergency,
+                          size: 16,
+                          color: Colors.red.shade700,
+                        ),
+                      ),
+                    ),
+                ],
               ),
               const SizedBox(height: 12),
               Text(
@@ -115,6 +146,31 @@ class _HandymanDetailScreenState extends State<HandymanDetailScreen> {
                 data['category_name'] ?? 'Specialist',
                 style: const TextStyle(color: Colors.white70, fontSize: 16),
               ),
+              if (widget.isEmergency) ...[
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 6),
+                  decoration: BoxDecoration(
+                    color: Colors.white,
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.emergency, color: Colors.red.shade700, size: 16),
+                      const SizedBox(width: 6),
+                      Text(
+                        'Emergency Available',
+                        style: TextStyle(
+                          color: Colors.red.shade700,
+                          fontSize: 12,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ],
             ],
           ),
         ),
@@ -123,6 +179,11 @@ class _HandymanDetailScreenState extends State<HandymanDetailScreen> {
   }
 
   Widget _buildStatsRow(Map<String, dynamic> data) {
+    final double baseRate = (data['hourly_rate'] ?? 0.0).toDouble();
+    final double displayRate = widget.isEmergency 
+        ? FirestoreService.calculateEmergencyPrice(baseRate)
+        : baseRate;
+
     return SliverToBoxAdapter(
       child: Padding(
         padding: const EdgeInsets.all(20),
@@ -132,7 +193,14 @@ class _HandymanDetailScreenState extends State<HandymanDetailScreen> {
             const SizedBox(width: 12),
             _buildStatCard('${data['jobs_completed'] ?? 0}', 'Jobs', Icons.work, AppColors.success),
             const SizedBox(width: 12),
-            _buildStatCard('${data['experience'] ?? 0}', 'Years', Icons.trending_up, AppColors.primary),
+            _buildStatCard(
+              widget.isEmergency 
+                  ? '₨${displayRate.toStringAsFixed(0)}'
+                  : '${data['experience'] ?? 0}', 
+              widget.isEmergency ? '/hr' : 'Years', 
+              widget.isEmergency ? Icons.bolt : Icons.trending_up, 
+              widget.isEmergency ? Colors.red.shade700 : AppColors.primary,
+            ),
           ],
         ),
       ),
@@ -140,15 +208,49 @@ class _HandymanDetailScreenState extends State<HandymanDetailScreen> {
   }
 
   Widget _buildAboutSection(Map<String, dynamic> hData, Map<String, dynamic> uData) {
+    final double baseRate = (hData['hourly_rate'] ?? 0.0).toDouble();
+    final double displayRate = widget.isEmergency 
+        ? FirestoreService.calculateEmergencyPrice(baseRate)
+        : baseRate;
+
     return SliverToBoxAdapter(
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 20),
         padding: const EdgeInsets.all(20),
-        decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(16)),
+        decoration: BoxDecoration(
+          color: Colors.white, 
+          borderRadius: BorderRadius.circular(16),
+          border: widget.isEmergency 
+              ? Border.all(color: Colors.red.shade300, width: 2)
+              : null,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            const Text('Professional Info', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+            Row(
+              children: [
+                const Text('Professional Info', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold)),
+                if (widget.isEmergency) ...[
+                  const Spacer(),
+                  Container(
+                    padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+                    decoration: BoxDecoration(
+                      color: Colors.red.shade50,
+                      borderRadius: BorderRadius.circular(6),
+                      border: Border.all(color: Colors.red.shade300),
+                    ),
+                    child: Text(
+                      'URGENT',
+                      style: TextStyle(
+                        color: Colors.red.shade700,
+                        fontSize: 10,
+                        fontWeight: FontWeight.bold,
+                      ),
+                    ),
+                  ),
+                ],
+              ],
+            ),
             const SizedBox(height: 16),
             if (hData['bio'] != null && hData['bio'].toString().isNotEmpty) ...[
               Text(hData['bio'], style: const TextStyle(color: AppColors.textLight)),
@@ -156,7 +258,64 @@ class _HandymanDetailScreenState extends State<HandymanDetailScreen> {
             ],
             _buildInfoRow(Icons.location_on, uData['phone'] ?? 'Contact via app'),
             const SizedBox(height: 12),
-            _buildInfoRow(Icons.attach_money, 'Rs ${(hData['hourly_rate'] ?? 0).toString()}/hr'),
+            if (widget.isEmergency) ...[
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: Colors.red.shade50,
+                  borderRadius: BorderRadius.circular(8),
+                ),
+                child: Column(
+                  children: [
+                    Row(
+                      children: [
+                        Icon(Icons.info_outline, color: Colors.red.shade700, size: 20),
+                        const SizedBox(width: 8),
+                        const Text(
+                          'Emergency Pricing',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 8),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Base Rate:', style: TextStyle(fontSize: 13)),
+                        Text('₨${baseRate.toStringAsFixed(0)}/hr', style: const TextStyle(fontSize: 13)),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'Emergency Surcharge (15%):',
+                          style: TextStyle(fontSize: 13, color: Colors.red.shade700, fontWeight: FontWeight.w600),
+                        ),
+                        Text(
+                          '+ ₨${(displayRate - baseRate).toStringAsFixed(0)}',
+                          style: TextStyle(fontSize: 13, color: Colors.red.shade700, fontWeight: FontWeight.w600),
+                        ),
+                      ],
+                    ),
+                    const Divider(height: 16),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        const Text('Total Emergency Rate:', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+                        Text(
+                          '₨${displayRate.toStringAsFixed(0)}/hr',
+                          style: TextStyle(fontWeight: FontWeight.bold, fontSize: 16, color: Colors.red.shade700),
+                        ),
+                      ],
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 12),
+            ] else
+              _buildInfoRow(Icons.attach_money, '₨${baseRate.toStringAsFixed(0)}/hr'),
             const SizedBox(height: 12),
             _buildInfoRow(Icons.verified, 'Verified Service Provider'),
           ],
@@ -191,18 +350,27 @@ class _HandymanDetailScreenState extends State<HandymanDetailScreen> {
       children: [
         Icon(icon, size: 20, color: AppColors.primary),
         const SizedBox(width: 12),
-        Text(text, style: const TextStyle(fontSize: 15, color: AppColors.textDark)),
+        Expanded(child: Text(text, style: const TextStyle(fontSize: 15, color: AppColors.textDark))),
       ],
     );
   }
 
   Widget _buildBottomBar(BuildContext context, Map<String, dynamic> hData, String fullName) {
-    final double rate = (hData['hourly_rate'] is int)
+    final double baseRate = (hData['hourly_rate'] is int)
         ? (hData['hourly_rate'] as int).toDouble()
         : (hData['hourly_rate'] ?? 0.0).toDouble();
+    
+    final double displayRate = widget.isEmergency 
+        ? FirestoreService.calculateEmergencyPrice(baseRate)
+        : baseRate;
 
     final String category = hData['category_name'] ?? 'Service';
     final bool isAvailable = hData['work_status'] == "Available";
+    final bool acceptsEmergencies = hData['accepts_emergencies'] ?? true;
+
+    final bool canBook = widget.isEmergency 
+        ? (isAvailable && acceptsEmergencies)
+        : isAvailable;
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -217,24 +385,40 @@ class _HandymanDetailScreenState extends State<HandymanDetailScreen> {
         ],
       ),
       child: SafeArea(
-        child: CustomButton(
-          text: isAvailable ? 'Book Now' : 'Not Available',
-          onPressed: isAvailable
-              ? () {
-            showModalBottomSheet(
-              context: context,
-              isScrollControlled: true,
-              backgroundColor: Colors.transparent,
-              builder: (sheetContext) => BookingBottomSheet(
-                handymanId: widget.handymanId,
-                handymanName: fullName,
-                hourlyRate: rate,
-                serviceName: category,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            if (widget.isEmergency && !acceptsEmergencies)
+              Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Text(
+                  'This pro does not accept emergency requests',
+                  style: TextStyle(color: Colors.red.shade700, fontSize: 12, fontWeight: FontWeight.bold),
+                ),
               ),
-            );
-          }
-              : () {},
-          backgroundColor: isAvailable ? AppColors.primary : Colors.grey,
+            CustomButton(
+              text: canBook ? 'Book Now' : 'Not Available',
+              onPressed: canBook
+                  ? () {
+                showModalBottomSheet(
+                  context: context,
+                  isScrollControlled: true,
+                  backgroundColor: Colors.transparent,
+                  builder: (sheetContext) => BookingBottomSheet(
+                    handymanId: widget.handymanId,
+                    handymanName: fullName,
+                    hourlyRate: displayRate,
+                    serviceName: category,
+                    isEmergency: widget.isEmergency,
+                  ),
+                );
+              }
+                  : () {},
+              backgroundColor: canBook 
+                  ? (widget.isEmergency ? Colors.red.shade700 : AppColors.primary)
+                  : Colors.grey,
+            ),
+          ],
         ),
       ),
     );

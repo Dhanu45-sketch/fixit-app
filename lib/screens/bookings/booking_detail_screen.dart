@@ -1,13 +1,15 @@
-// ==========================================
-// FILE: lib/screens/bookings/booking_detail_screen.dart
-// ==========================================
 import 'package:flutter/material.dart';
-import '../../models/booking_detail_model.dart';
+import '../../models/booking_model.dart';
+import '../../services/firestore_service.dart';
+import '../../services/chat_service.dart';
+import '../../services/auth_service.dart';
 import '../../utils/colors.dart';
 import '../../widgets/custom_button.dart';
+import '../chat/chat_screen.dart';
+import '../../widgets/cancel_booking_sheet.dart';
 
-class BookingDetailScreen extends StatelessWidget {
-  final BookingDetail booking;
+class BookingDetailScreen extends StatefulWidget {
+  final Booking booking;
 
   const BookingDetailScreen({
     Key? key,
@@ -15,7 +17,153 @@ class BookingDetailScreen extends StatelessWidget {
   }) : super(key: key);
 
   @override
+  State<BookingDetailScreen> createState() => _BookingDetailScreenState();
+}
+
+class _BookingDetailScreenState extends State<BookingDetailScreen> {
+  final _firestoreService = FirestoreService();
+  final _chatService = ChatService();
+  final _authService = AuthService();
+  
+  bool _isLoading = false;
+  String? _chatId;
+  String? _currentUserId;
+  bool _isHandyman = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _loadChatAndUserData();
+  }
+
+  Future<void> _loadChatAndUserData() async {
+    _currentUserId = _authService.currentUserId;
+    
+    // Check if user is handyman
+    final userProfile = await _authService.getCurrentUserProfile();
+    if (userProfile != null && mounted) {
+      setState(() {
+        _isHandyman = userProfile['is_handyman'] ?? false;
+      });
+    }
+
+    // Check if chat exists for this booking
+    final existingChatId = await _chatService.getChatIdByBookingId(widget.booking.id);
+    
+    if (mounted) {
+      setState(() {
+        _chatId = existingChatId;
+      });
+    }
+  }
+
+  Future<void> _openChat() async {
+    setState(() => _isLoading = true);
+
+    try {
+      String chatId;
+      String hName = "";
+      
+      // Resolve names first
+      if (!_isHandyman) {
+        hName = await _getHandymanName();
+      }
+      
+      final String otherName = _isHandyman 
+          ? widget.booking.customerName 
+          : hName;
+
+      if (_chatId != null) {
+        chatId = _chatId!;
+      } else {
+        // Create new chat
+        chatId = await _chatService.createOrGetChat(
+          bookingId: widget.booking.id,
+          customerId: widget.booking.customerId,
+          handymanId: widget.booking.handymanId,
+          customerName: widget.booking.customerName,
+          handymanName: hName.isEmpty ? await _getHandymanName() : hName,
+        );
+        
+        setState(() => _chatId = chatId);
+      }
+
+      if (mounted) {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => ChatScreen(
+              chatId: chatId,
+              otherParticipantName: otherName,
+              bookingId: widget.booking.id,
+            ),
+          ),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Error opening chat: $e')),
+        );
+      }
+    } finally {
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
+    }
+  }
+
+  Future<String> _getHandymanName() async {
+    final handymanProfile = await _firestoreService.getUserProfile(widget.booking.handymanId);
+    return '${handymanProfile?['first_name'] ?? ''} ${handymanProfile?['last_name'] ?? ''}'.trim();
+  }
+
+  void _showCancelDialog() {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) => CancelBookingSheet(
+        booking: widget.booking,
+        onConfirmCancel: _handleCancellation,
+      ),
+    );
+  }
+
+  Future<void> _handleCancellation(String reason, String? notes) async {
+    try {
+      await _firestoreService.cancelBooking(
+        bookingId: widget.booking.id,
+        cancelledBy: _currentUserId!,
+        cancelledByType: _isHandyman ? 'handyman' : 'customer',
+        reason: reason,
+        notes: notes,
+      );
+
+      if (mounted) {
+        Navigator.pop(context); // Close detail screen
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('Booking cancelled successfully'),
+            backgroundColor: AppColors.success,
+          ),
+        );
+      }
+    } catch (e) {
+      rethrow; // Let CancelBookingSheet handle the error
+    }
+  }
+
+  @override
   Widget build(BuildContext context) {
+    final canChat = widget.booking.status == 'Confirmed' || 
+                    widget.booking.status == 'In Progress' ||
+                    widget.booking.status == 'Pending'; // Allow chat for pending too
+    
+    final canCancel = widget.booking.status != 'Completed' && 
+                      widget.booking.status != 'Cancelled' &&
+                      widget.booking.status != 'In Progress';
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -23,15 +171,6 @@ class BookingDetailScreen extends StatelessWidget {
         backgroundColor: Colors.white,
         foregroundColor: AppColors.textDark,
         elevation: 0,
-        actions: [
-          if (booking.status == 'Confirmed' || booking.status == 'Pending')
-            IconButton(
-              icon: const Icon(Icons.more_vert),
-              onPressed: () {
-                _showOptionsBottomSheet(context);
-              },
-            ),
-        ],
       ),
       body: SingleChildScrollView(
         child: Column(
@@ -54,7 +193,9 @@ class BookingDetailScreen extends StatelessWidget {
                     radius: 40,
                     backgroundColor: AppColors.primary.withOpacity(0.1),
                     child: Text(
-                      booking.handymanName.isNotEmpty ? booking.handymanName[0] : '?',
+                      _isHandyman 
+                          ? (widget.booking.customerName.isNotEmpty ? widget.booking.customerName[0] : 'C')
+                          : (widget.booking.serviceName.isNotEmpty ? widget.booking.serviceName[0] : 'S'),
                       style: const TextStyle(
                         fontSize: 32,
                         fontWeight: FontWeight.bold,
@@ -64,7 +205,9 @@ class BookingDetailScreen extends StatelessWidget {
                   ),
                   const SizedBox(height: 12),
                   Text(
-                    booking.handymanName,
+                    _isHandyman 
+                        ? widget.booking.customerName 
+                        : widget.booking.serviceName,
                     style: const TextStyle(
                       fontSize: 20,
                       fontWeight: FontWeight.bold,
@@ -72,212 +215,74 @@ class BookingDetailScreen extends StatelessWidget {
                     ),
                   ),
                   const SizedBox(height: 4),
-                  Text(
-                    booking.serviceType,
-                    style: const TextStyle(
-                      fontSize: 14,
-                      color: AppColors.textLight,
+                  if (_isHandyman)
+                    Text(
+                      widget.booking.serviceName,
+                      style: const TextStyle(
+                        fontSize: 14,
+                        color: AppColors.textLight,
+                      ),
                     ),
-                  ),
                   const SizedBox(height: 12),
-                  _buildStatusBadge(booking.status),
+                  _buildStatusBadge(widget.booking.status),
                 ],
               ),
             ),
             const SizedBox(height: 20),
 
             // Booking Info
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 20),
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Booking Information',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textDark,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  _buildInfoRow(
-                    Icons.work_outline,
-                    'Service',
-                    booking.serviceType,
-                  ),
-                  _buildInfoRow(
-                    Icons.description_outlined,
-                    'Description',
-                    booking.description,
-                  ),
-                  _buildInfoRow(
-                    Icons.location_on_outlined,
-                    'Location',
-                    booking.location,
-                  ),
-                  _buildInfoRow(
-                    Icons.calendar_today,
-                    'Date',
-                    booking.scheduledDateString,
-                  ),
-                  _buildInfoRow(
-                    Icons.access_time,
-                    'Time',
-                    booking.scheduledTimeString,
-                  ),
-                  _buildInfoRow(
-                    Icons.schedule,
-                    'Duration',
-                    '${booking.estimatedHours} hour${booking.estimatedHours > 1 ? 's' : ''}',
-                  ),
-                  if (booking.isEmergency)
-                    _buildInfoRow(
-                      Icons.emergency,
-                      'Priority',
-                      'EMERGENCY SERVICE',
-                      valueColor: AppColors.error,
-                    ),
-                ],
-              ),
-            ),
+            _buildInfoSection(),
+            
             const SizedBox(height: 20),
 
             // Payment Info
-            Container(
-              margin: const EdgeInsets.symmetric(horizontal: 20),
-              padding: const EdgeInsets.all(20),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withOpacity(0.05),
-                    blurRadius: 10,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  const Text(
-                    'Payment Details',
-                    style: TextStyle(
-                      fontSize: 18,
-                      fontWeight: FontWeight.bold,
-                      color: AppColors.textDark,
-                    ),
-                  ),
-                  const SizedBox(height: 16),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text('Service Cost'),
-                      Text('Rs ${booking.amount.toStringAsFixed(0)}'),
-                    ],
-                  ),
-                  if (booking.isEmergency) ...[
-                    const SizedBox(height: 8),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: const [
-                        Text('Emergency Fee'),
-                        Text('Rs 500'),
-                      ],
-                    ),
-                  ],
-                  const Divider(height: 24),
-                  Row(
-                    mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                    children: [
-                      const Text(
-                        'Total Amount',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      Text(
-                        'Rs ${(booking.amount + (booking.isEmergency ? 500 : 0)).toStringAsFixed(0)}',
-                        style: const TextStyle(
-                          fontSize: 18,
-                          fontWeight: FontWeight.bold,
-                          color: AppColors.primary,
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
+            _buildPaymentSection(),
+            
             const SizedBox(height: 20),
 
             // Action Buttons
-            if (booking.status == 'Confirmed' || booking.status == 'Pending')
+            if (canChat || canCancel)
               Padding(
                 padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: Row(
+                child: Column(
                   children: [
-                    Expanded(
-                      child: OutlinedButton(
-                        onPressed: () {
-                          _showCancelDialog(context);
-                        },
+                    if (canChat) ...[
+                      CustomButton(
+                        text: '💬 Contact ${_isHandyman ? "Customer" : "Handyman"}',
+                        onPressed: _openChat,
+                        isLoading: _isLoading,
+                        backgroundColor: AppColors.primary,
+                      ),
+                      if (canCancel) const SizedBox(height: 12),
+                    ],
+                    if (canCancel)
+                      OutlinedButton(
+                        onPressed: _showCancelDialog,
                         style: OutlinedButton.styleFrom(
+                          minimumSize: const Size(double.infinity, 56),
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           side: const BorderSide(color: AppColors.error),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(12),
                           ),
                         ),
-                        child: const Text(
-                          'Cancel Booking',
-                          style: TextStyle(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w600,
-                            color: AppColors.error,
-                          ),
+                        child: Row(
+                          mainAxisAlignment: MainAxisAlignment.center,
+                          children: [
+                            const Icon(Icons.cancel_outlined, color: AppColors.error),
+                            const SizedBox(width: 8),
+                            const Text(
+                              'Cancel Booking',
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: FontWeight.w600,
+                                color: AppColors.error,
+                              ),
+                            ),
+                          ],
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: CustomButton(
-                        text: 'Contact',
-                        isLoading: false,
-                        onPressed: () {
-                          ScaffoldMessenger.of(context).showSnackBar(
-                            const SnackBar(content: Text('Chat feature coming soon!')),
-                          );
-                        },
-                      ),
-                    ),
                   ],
-                ),
-              ),
-
-            if (booking.status == 'Completed' && booking.rating == null)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 20),
-                child: CustomButton(
-                  text: 'Rate Service',
-                  isLoading: false,
-                  onPressed: () {
-                    _showRatingDialog(context);
-                  },
                 ),
               ),
 
@@ -292,6 +297,7 @@ class BookingDetailScreen extends StatelessWidget {
     Color color;
     switch (status.toLowerCase()) {
       case 'confirmed':
+      case 'accepted':
         color = AppColors.success;
         break;
       case 'pending':
@@ -304,6 +310,7 @@ class BookingDetailScreen extends StatelessWidget {
         color = AppColors.success;
         break;
       case 'cancelled':
+      case 'rejected':
         color = AppColors.error;
         break;
       default:
@@ -317,19 +324,120 @@ class BookingDetailScreen extends StatelessWidget {
         borderRadius: BorderRadius.circular(20),
         border: Border.all(color: color, width: 1.5),
       ),
-      child: Text(
-        status.toUpperCase(),
-        style: TextStyle(
-          fontSize: 12,
-          fontWeight: FontWeight.bold,
-          color: color,
-          letterSpacing: 0.5,
-        ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          if (widget.booking.isEmergency)
+            const Padding(
+              padding: EdgeInsets.only(right: 6),
+              child: Icon(Icons.emergency, color: Colors.red, size: 16),
+            ),
+          Text(
+            status.toUpperCase(),
+            style: TextStyle(
+              fontSize: 12,
+              fontWeight: FontWeight.bold,
+              color: color,
+              letterSpacing: 0.5,
+            ),
+          ),
+        ],
       ),
     );
   }
 
-  Widget _buildInfoRow(IconData icon, String label, String value, {Color? valueColor}) {
+  Widget _buildInfoSection() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Booking Information',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: AppColors.textDark,
+            ),
+          ),
+          const SizedBox(height: 16),
+          _buildInfoRow(Icons.location_on_outlined, 'Location', widget.booking.address),
+          _buildInfoRow(
+            Icons.calendar_today,
+            'Date',
+            '${widget.booking.scheduledStartTime.day}/${widget.booking.scheduledStartTime.month}/${widget.booking.scheduledStartTime.year}',
+          ),
+          _buildInfoRow(
+            Icons.access_time,
+            'Time',
+            '${widget.booking.scheduledStartTime.hour}:${widget.booking.scheduledStartTime.minute.toString().padLeft(2, '0')}',
+          ),
+          if (widget.booking.notes.isNotEmpty)
+            _buildInfoRow(Icons.note, 'Notes', widget.booking.notes),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildPaymentSection() {
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 20),
+      padding: const EdgeInsets.all(20),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.05),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            'Payment Details',
+            style: TextStyle(
+              fontSize: 18,
+              fontWeight: FontWeight.bold,
+              color: AppColors.textDark,
+            ),
+          ),
+          const SizedBox(height: 16),
+          Row(
+            mainAxisAlignment: MainAxisAlignment.spaceBetween,
+            children: [
+              const Text('Total Amount'),
+              Text(
+                'Rs ${widget.booking.totalPrice.toStringAsFixed(0)}',
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.bold,
+                  color: AppColors.primary,
+                ),
+              ),
+            ],
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildInfoRow(IconData icon, String label, String value) {
     return Padding(
       padding: const EdgeInsets.only(bottom: 12),
       child: Row(
@@ -351,141 +459,16 @@ class BookingDetailScreen extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   value,
-                  style: TextStyle(
+                  style: const TextStyle(
                     fontSize: 14,
                     fontWeight: FontWeight.w600,
-                    color: valueColor ?? AppColors.textDark,
+                    color: AppColors.textDark,
                   ),
                 ),
               ],
             ),
           ),
         ],
-      ),
-    );
-  }
-
-  void _showOptionsBottomSheet(BuildContext context) {
-    showModalBottomSheet(
-      context: context,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(20)),
-      ),
-      builder: (context) => Container(
-        padding: const EdgeInsets.all(20),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.edit, color: AppColors.primary),
-              title: const Text('Reschedule'),
-              onTap: () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('Reschedule feature coming soon!')),
-                );
-              },
-            ),
-            ListTile(
-              leading: const Icon(Icons.cancel, color: AppColors.error),
-              title: const Text('Cancel Booking'),
-              onTap: () {
-                Navigator.pop(context);
-                _showCancelDialog(context);
-              },
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  void _showCancelDialog(BuildContext context) {
-    showDialog(
-      context: context,
-      builder: (context) => AlertDialog(
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-        title: const Text('Cancel Booking?'),
-        content: const Text(
-          'Are you sure you want to cancel this booking? This action cannot be undone.',
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: const Text('No, Keep It'),
-          ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              Navigator.pop(context);
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(
-                  content: Text('Booking cancelled successfully'),
-                  backgroundColor: AppColors.error,
-                ),
-              );
-            },
-            child: const Text(
-              'Yes, Cancel',
-              style: TextStyle(color: AppColors.error),
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  void _showRatingDialog(BuildContext context) {
-    int rating = 0;
-    showDialog(
-      context: context,
-      builder: (context) => StatefulBuilder(
-        builder: (context, setState) => AlertDialog(
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-          title: const Text('Rate Service'),
-          content: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              const Text('How was your experience?'),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: List.generate(5, (index) {
-                  return IconButton(
-                    icon: Icon(
-                      index < rating ? Icons.star : Icons.star_border,
-                      size: 40,
-                      color: Colors.amber,
-                    ),
-                    onPressed: () {
-                      setState(() => rating = index + 1);
-                    },
-                  );
-                }),
-              ),
-            ],
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(context),
-              child: const Text('Cancel'),
-            ),
-            TextButton(
-              onPressed: rating > 0
-                  ? () {
-                Navigator.pop(context);
-                ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text('Rated $rating stars!'),
-                    backgroundColor: AppColors.success,
-                  ),
-                );
-              }
-                  : null,
-              child: const Text('Submit'),
-            ),
-          ],
-        ),
       ),
     );
   }
