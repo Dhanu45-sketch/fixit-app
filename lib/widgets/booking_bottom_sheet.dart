@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:intl/intl.dart';
-import 'package:geolocator/geolocator.dart'; // Assume geolocator is in pubspec
+import 'package:geolocator/geolocator.dart';
+import 'package:geocoding/geocoding.dart'; // FIX: Added for reverse geocoding
 import '../services/firestore_service.dart';
 import '../utils/colors.dart';
 import 'custom_button.dart';
@@ -32,7 +33,8 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
   final TextEditingController _addressController = TextEditingController();
   final _firestoreService = FirestoreService();
   bool _isLoading = false;
-  bool _useCurrentLocation = false; // NEW
+  bool _useCurrentLocation = false;
+  Position? _currentPosition; // FIX: Store position for later use
 
   @override
   void dispose() {
@@ -41,26 +43,74 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
     super.dispose();
   }
 
-  // NEW: Fetch current location
+  // FIX: Improved location fetching with reverse geocoding
   Future<void> _getCurrentLocation() async {
+    if (_isLoading) return; // FIX: Prevent multiple simultaneous calls
+
     setState(() => _isLoading = true);
+
     try {
       LocationPermission permission = await Geolocator.checkPermission();
       if (permission == LocationPermission.denied) {
         permission = await Geolocator.requestPermission();
       }
 
-      if (permission == LocationPermission.always || permission == LocationPermission.whileInUse) {
-        Position position = await Geolocator.getCurrentPosition();
-        setState(() {
-          _addressController.text = "Current Location (${position.latitude.toStringAsFixed(4)}, ${position.longitude.toStringAsFixed(4)})";
-          _useCurrentLocation = true;
-        });
+      if (permission == LocationPermission.always ||
+          permission == LocationPermission.whileInUse) {
+        Position position = await Geolocator.getCurrentPosition(
+          desiredAccuracy: LocationAccuracy.high,
+        );
+
+        _currentPosition = position;
+
+        // FIX: Try to get actual address using reverse geocoding
+        try {
+          List<Placemark> placemarks = await placemarkFromCoordinates(
+            position.latitude,
+            position.longitude,
+          );
+
+          if (placemarks.isNotEmpty && mounted) {
+            final place = placemarks.first;
+            final address = [
+              place.street,
+              place.locality,
+              place.administrativeArea,
+            ].where((e) => e != null && e.isNotEmpty).join(', ');
+
+            setState(() {
+              _addressController.text = address.isNotEmpty
+                  ? address
+                  : "Lat: ${position.latitude.toStringAsFixed(4)}, Lng: ${position.longitude.toStringAsFixed(4)}";
+              _useCurrentLocation = true;
+            });
+          } else if (mounted) {
+            // Fallback to coordinates if no address found
+            setState(() {
+              _addressController.text =
+              "Lat: ${position.latitude.toStringAsFixed(4)}, Lng: ${position.longitude.toStringAsFixed(4)}";
+              _useCurrentLocation = true;
+            });
+          }
+        } catch (e) {
+          // FIX: If geocoding fails, use coordinates
+          debugPrint('Geocoding error: $e');
+          if (mounted) {
+            setState(() {
+              _addressController.text =
+              "Lat: ${position.latitude.toStringAsFixed(4)}, Lng: ${position.longitude.toStringAsFixed(4)}";
+              _useCurrentLocation = true;
+            });
+          }
+        }
       } else {
         setState(() => _useCurrentLocation = false);
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Location permissions denied')),
+            const SnackBar(
+              content: Text('Location permissions denied'),
+              backgroundColor: AppColors.error,
+            ),
           );
         }
       }
@@ -68,20 +118,25 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
       setState(() => _useCurrentLocation = false);
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Error getting location: $e')),
+          SnackBar(
+            content: Text('Error getting location: $e'),
+            backgroundColor: AppColors.error,
+          ),
         );
       }
     } finally {
-      setState(() => _isLoading = false);
+      if (mounted) {
+        setState(() => _isLoading = false);
+      }
     }
   }
 
   @override
   Widget build(BuildContext context) {
-    final double baseRate = widget.isEmergency 
+    final double baseRate = widget.isEmergency
         ? widget.hourlyRate / 1.15
         : widget.hourlyRate;
-    final double emergencySurcharge = widget.isEmergency 
+    final double emergencySurcharge = widget.isEmergency
         ? widget.hourlyRate - baseRate
         : 0.0;
 
@@ -93,7 +148,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: const BorderRadius.vertical(top: Radius.circular(25)),
-        border: widget.isEmergency 
+        border: widget.isEmergency
             ? Border(top: BorderSide(color: Colors.red.shade700, width: 3))
             : null,
       ),
@@ -104,7 +159,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
           children: [
             const Center(child: SizedBox(width: 40, child: Divider(thickness: 4))),
             const SizedBox(height: 20),
-            
+
             // Header
             Row(
               children: [
@@ -117,7 +172,7 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                         style: const TextStyle(fontSize: 20, fontWeight: FontWeight.bold),
                       ),
                       Text(
-                        widget.serviceName, 
+                        widget.serviceName,
                         style: const TextStyle(color: AppColors.textLight),
                       ),
                     ],
@@ -137,7 +192,11 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                         SizedBox(width: 4),
                         Text(
                           'EMERGENCY',
-                          style: TextStyle(color: Colors.white, fontSize: 11, fontWeight: FontWeight.bold),
+                          style: TextStyle(
+                            color: Colors.white,
+                            fontSize: 11,
+                            fontWeight: FontWeight.bold,
+                          ),
                         ),
                       ],
                     ),
@@ -146,28 +205,39 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
             ),
             const Divider(height: 32),
 
-            // NEW: Use Current Location Checkbox
+            // Use Current Location Checkbox
             Row(
               children: [
                 Checkbox(
                   value: _useCurrentLocation,
-                  activeColor: widget.isEmergency ? Colors.red.shade700 : AppColors.primary,
-                  onChanged: (val) {
+                  activeColor: widget.isEmergency
+                      ? Colors.red.shade700
+                      : AppColors.primary,
+                  onChanged: _isLoading
+                      ? null  // FIX: Disable during loading
+                      : (val) {
                     if (val == true) {
                       _getCurrentLocation();
                     } else {
                       setState(() {
                         _useCurrentLocation = false;
                         _addressController.clear();
+                        _currentPosition = null;
                       });
                     }
                   },
                 ),
-                Text(
-                  'Use current location',
-                  style: TextStyle(
-                    fontSize: 14,
-                    color: widget.isEmergency ? Colors.red.shade700 : AppColors.textDark,
+                Expanded(
+                  child: Text(
+                    _isLoading
+                        ? 'Getting location...'
+                        : 'Use current location',
+                    style: TextStyle(
+                      fontSize: 14,
+                      color: widget.isEmergency
+                          ? Colors.red.shade700
+                          : AppColors.textDark,
+                    ),
                   ),
                 ),
               ],
@@ -179,21 +249,34 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
               style: TextStyle(
                 fontSize: 14,
                 fontWeight: FontWeight.w600,
-                color: widget.isEmergency ? Colors.red.shade700 : AppColors.textDark,
+                color: widget.isEmergency
+                    ? Colors.red.shade700
+                    : AppColors.textDark,
               ),
             ),
             const SizedBox(height: 8),
             TextField(
               controller: _addressController,
               maxLines: 2,
-              enabled: !_useCurrentLocation, // Disable if using GPS
+              enabled: !_useCurrentLocation && !_isLoading, // FIX: Disable during loading
               decoration: InputDecoration(
                 hintText: '123 Main Street, Kandy...',
                 prefixIcon: Icon(
                   Icons.location_on,
-                  color: widget.isEmergency ? Colors.red.shade700 : AppColors.primary,
+                  color: widget.isEmergency
+                      ? Colors.red.shade700
+                      : AppColors.primary,
                 ),
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(
+                    color: widget.isEmergency
+                        ? Colors.red.shade700
+                        : AppColors.primary,
+                    width: 2,
+                  ),
+                ),
               ),
             ),
             const SizedBox(height: 16),
@@ -201,36 +284,66 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
             // Date Selection
             ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: Icon(Icons.calendar_today, color: widget.isEmergency ? Colors.red.shade700 : AppColors.primary),
+              leading: Icon(
+                Icons.calendar_today,
+                color: widget.isEmergency
+                    ? Colors.red.shade700
+                    : AppColors.primary,
+              ),
               title: Text(DateFormat('EEEE, MMM dd').format(selectedDate)),
-              trailing: TextButton(onPressed: _selectDate, child: const Text('Change')),
+              trailing: TextButton(
+                onPressed: _isLoading ? null : _selectDate,
+                child: const Text('Change'),
+              ),
             ),
 
             // Time Selection
             ListTile(
               contentPadding: EdgeInsets.zero,
-              leading: Icon(Icons.access_time, color: widget.isEmergency ? Colors.red.shade700 : AppColors.primary),
+              leading: Icon(
+                Icons.access_time,
+                color: widget.isEmergency
+                    ? Colors.red.shade700
+                    : AppColors.primary,
+              ),
               title: Text(selectedTime.format(context)),
-              trailing: TextButton(onPressed: _selectTime, child: const Text('Change')),
+              trailing: TextButton(
+                onPressed: _isLoading ? null : _selectTime,
+                child: const Text('Change'),
+              ),
             ),
 
             const SizedBox(height: 16),
             TextField(
               controller: _notesController,
               maxLines: 2,
+              enabled: !_isLoading,
               decoration: InputDecoration(
-                hintText: widget.isEmergency ? 'Describe your emergency...' : 'Specific instructions?',
+                hintText: widget.isEmergency
+                    ? 'Describe your emergency...'
+                    : 'Specific instructions?',
                 border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(12),
+                  borderSide: BorderSide(
+                    color: widget.isEmergency
+                        ? Colors.red.shade700
+                        : AppColors.primary,
+                    width: 2,
+                  ),
+                ),
               ),
             ),
 
             const SizedBox(height: 24),
-            
+
             // Pricing Breakdown
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: widget.isEmergency ? Colors.red.shade50 : AppColors.background,
+                color: widget.isEmergency
+                    ? Colors.red.shade50
+                    : AppColors.background,
                 borderRadius: BorderRadius.circular(12),
               ),
               child: Column(
@@ -238,8 +351,25 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
                   Row(
                     mainAxisAlignment: MainAxisAlignment.spaceBetween,
                     children: [
-                      Text('Total Rate', style: TextStyle(fontWeight: FontWeight.bold, color: widget.isEmergency ? Colors.red.shade900 : AppColors.textDark)),
-                      Text('Rs. ${widget.hourlyRate.toStringAsFixed(0)}', style: TextStyle(fontWeight: FontWeight.bold, fontSize: 18, color: widget.isEmergency ? Colors.red.shade700 : AppColors.primary)),
+                      Text(
+                        'Total Rate',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          color: widget.isEmergency
+                              ? Colors.red.shade900
+                              : AppColors.textDark,
+                        ),
+                      ),
+                      Text(
+                        'Rs. ${widget.hourlyRate.toStringAsFixed(0)}',
+                        style: TextStyle(
+                          fontWeight: FontWeight.bold,
+                          fontSize: 18,
+                          color: widget.isEmergency
+                              ? Colors.red.shade700
+                              : AppColors.primary,
+                        ),
+                      ),
                     ],
                   ),
                 ],
@@ -249,10 +379,14 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
             const SizedBox(height: 24),
 
             CustomButton(
-              text: widget.isEmergency ? 'Request Emergency Service' : 'Confirm Booking',
+              text: widget.isEmergency
+                  ? 'Request Emergency Service'
+                  : 'Confirm Booking',
               isLoading: _isLoading,
               onPressed: _handleBooking,
-              backgroundColor: widget.isEmergency ? Colors.red.shade700 : null,
+              backgroundColor: widget.isEmergency
+                  ? Colors.red.shade700
+                  : null,
             ),
 
             const SizedBox(height: 30),
@@ -281,15 +415,26 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
   }
 
   Future<void> _handleBooking() async {
-    if (_addressController.text.trim().isEmpty) {
+    // FIX: Better validation
+    final address = _addressController.text.trim();
+    if (address.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('⚠️ Please enter your service address'), backgroundColor: AppColors.error),
+        const SnackBar(
+          content: Text('⚠️ Please enter your service address'),
+          backgroundColor: AppColors.error,
+        ),
       );
       return;
     }
 
     setState(() => _isLoading = true);
-    final scheduledDateTime = DateTime(selectedDate.year, selectedDate.month, selectedDate.day, selectedTime.hour, selectedTime.minute);
+    final scheduledDateTime = DateTime(
+      selectedDate.year,
+      selectedDate.month,
+      selectedDate.day,
+      selectedTime.hour,
+      selectedTime.minute,
+    );
 
     try {
       await _firestoreService.createBooking(
@@ -297,19 +442,33 @@ class _BookingBottomSheetState extends State<BookingBottomSheet> {
         serviceName: widget.serviceName,
         scheduledTime: scheduledDateTime,
         hourlyRate: widget.hourlyRate,
-        notes: _notesController.text,
-        address: _addressController.text.trim(),
+        notes: _notesController.text.trim(),
+        address: address,
         isEmergency: widget.isEmergency,
       );
 
       if (mounted) {
         Navigator.pop(context);
         ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text(widget.isEmergency ? '🚨 Emergency Request Sent!' : '✅ Booking Request Sent!'), backgroundColor: AppColors.success),
+          SnackBar(
+            content: Text(
+              widget.isEmergency
+                  ? '🚨 Emergency Request Sent!'
+                  : '✅ Booking Request Sent!',
+            ),
+            backgroundColor: AppColors.success,
+          ),
         );
       }
     } catch (e) {
-      if (mounted) ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text('Error: $e')));
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Error: $e'),
+            backgroundColor: AppColors.error,
+          ),
+        );
+      }
     } finally {
       if (mounted) setState(() => _isLoading = false);
     }

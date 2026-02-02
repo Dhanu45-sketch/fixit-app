@@ -1,4 +1,6 @@
 // lib/models/booking_model.dart
+// FIXED VERSION - Added hasReview property
+
 import 'package:cloud_firestore/cloud_firestore.dart';
 
 class Booking {
@@ -7,20 +9,13 @@ class Booking {
   final String handymanId;
   final String customerName;
   final String serviceName;
-  final String status; // Pending, Confirmed, On The Way, In Progress, Completed, Cancelled
+  final String status;
   final DateTime scheduledStartTime;
   final double totalPrice;
   final String notes;
   final String address;
   final bool isEmergency;
-  
-  // Review fields
-  final bool hasReview;
-  final String? reviewId;
-
-  // Navigation fields
-  final DateTime? navigationStartedAt;  // When handyman started navigation
-  final DateTime? arrivedAt;            // When handyman marked as arrived
+  final bool hasReview; // NEW: Added to track if user has reviewed
 
   Booking({
     required this.id,
@@ -34,47 +29,30 @@ class Booking {
     required this.notes,
     required this.address,
     this.isEmergency = false,
-    this.hasReview = false,
-    this.reviewId,
-    this.navigationStartedAt,
-    this.arrivedAt,
+    this.hasReview = false, // NEW: Default to false
   });
 
-  // Helper to check if handyman is on the way
-  bool get isOnTheWay => status == 'On The Way';
-
-  // Helper to check if handyman has arrived
-  bool get hasArrived => arrivedAt != null;
-
-  // Convert Firestore Document to Booking Object
+  // Factory constructor to create Booking from Firestore document
   factory Booking.fromFirestore(DocumentSnapshot doc) {
-    Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
+    final data = doc.data() as Map<String, dynamic>;
+
     return Booking(
       id: doc.id,
       customerId: data['customer_id'] ?? '',
       handymanId: data['handyman_id'] ?? '',
-      customerName: data['customer_name'] ?? 'Customer',
-      serviceName: data['service_name'] ?? 'Service',
+      customerName: data['customer_name'] ?? 'Unknown',
+      serviceName: data['service_name'] ?? '',
       status: data['status'] ?? 'Pending',
       scheduledStartTime: (data['scheduled_start_time'] as Timestamp).toDate(),
       totalPrice: (data['total_price'] ?? 0).toDouble(),
       notes: data['notes'] ?? '',
-      address: data['address'] ?? 'No Address',
+      address: data['address'] ?? '',
       isEmergency: data['is_emergency'] ?? false,
-      hasReview: data['has_review'] ?? false,
-      reviewId: data['review_id'],
-      
-      // Navigation Fields
-      navigationStartedAt: data['navigation_started_at'] != null
-          ? (data['navigation_started_at'] as Timestamp).toDate()
-          : null,
-      arrivedAt: data['arrived_at'] != null
-          ? (data['arrived_at'] as Timestamp).toDate()
-          : null,
+      hasReview: data['has_review'] ?? false, // NEW: Read from Firestore
     );
   }
 
-  // Convert Booking Object to Map for saving to Firestore
+  // Convert Booking to Map for Firestore
   Map<String, dynamic> toMap() {
     return {
       'customer_id': customerId,
@@ -87,43 +65,38 @@ class Booking {
       'notes': notes,
       'address': address,
       'is_emergency': isEmergency,
-      'has_review': hasReview,
-      'review_id': reviewId,
-      
-      // Navigation Fields
-      'navigation_started_at': navigationStartedAt != null
-          ? Timestamp.fromDate(navigationStartedAt!)
-          : null,
-      'arrived_at': arrivedAt != null
-          ? Timestamp.fromDate(arrivedAt!)
-          : null,
+      'has_review': hasReview, // NEW: Include in Firestore writes
     };
   }
 
-  // Create a copy with updated fields
+  // CopyWith method for easy object copying with modifications
   Booking copyWith({
+    String? id,
+    String? customerId,
+    String? handymanId,
+    String? customerName,
+    String? serviceName,
     String? status,
-    DateTime? navigationStartedAt,
-    DateTime? arrivedAt,
-    bool? hasReview,
-    String? reviewId,
+    DateTime? scheduledStartTime,
+    double? totalPrice,
+    String? notes,
+    String? address,
+    bool? isEmergency,
+    bool? hasReview, // NEW: Allow updating hasReview
   }) {
     return Booking(
-      id: id,
-      customerId: customerId,
-      handymanId: handymanId,
-      customerName: customerName,
-      serviceName: serviceName,
+      id: id ?? this.id,
+      customerId: customerId ?? this.customerId,
+      handymanId: handymanId ?? this.handymanId,
+      customerName: customerName ?? this.customerName,
+      serviceName: serviceName ?? this.serviceName,
       status: status ?? this.status,
-      scheduledStartTime: scheduledStartTime,
-      totalPrice: totalPrice,
-      notes: notes,
-      address: address,
-      isEmergency: isEmergency,
+      scheduledStartTime: scheduledStartTime ?? this.scheduledStartTime,
+      totalPrice: totalPrice ?? this.totalPrice,
+      notes: notes ?? this.notes,
+      address: address ?? this.address,
+      isEmergency: isEmergency ?? this.isEmergency,
       hasReview: hasReview ?? this.hasReview,
-      reviewId: reviewId ?? this.reviewId,
-      navigationStartedAt: navigationStartedAt ?? this.navigationStartedAt,
-      arrivedAt: arrivedAt ?? this.arrivedAt,
     );
   }
 }

@@ -5,16 +5,15 @@ publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: ^3.9.2
+  sdk: '>=3.0.0 <4.0.0'  # FIX: More flexible SDK constraint
 
 dependencies:
-  url_launcher: ^6.2.1  # NEW - For opening Google Maps
+  url_launcher: ^6.2.1
   google_maps_flutter: ^2.5.3
-  location: ^5.0.3 # Optional: to show the user's current location
+  location: ^5.0.3
   image_picker: ^1.0.7
-
   cached_network_image: ^3.3.1
-  # image_cropper: ^3.0.0 # Removed due to build incompatibility
+
   flutter:
     sdk: flutter
 
@@ -22,12 +21,10 @@ dependencies:
   provider: ^6.1.1
 
   # Firebase
-
   firebase_core: ^3.15.2
   firebase_auth: ^5.3.3
   cloud_firestore: ^5.5.2
-
-  firebase_storage: ^12.3.8  # For file uploads (optional)
+  firebase_storage: ^12.3.8
 
   # UI Components
   cupertino_icons: ^1.0.2
@@ -36,6 +33,7 @@ dependencies:
   # Navigation
   go_router: ^12.1.1
 
+  # Location Services
   geolocator: ^10.1.0
   geocoding: ^2.1.1
   permission_handler: ^11.1.0
@@ -43,13 +41,12 @@ dependencies:
   # Utilities
   equatable: ^2.0.5
 
-
 dev_dependencies:
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
 
-  # Testing packages (Latest Stable Versions)
+  # Testing packages
   mockito: ^5.4.5
   build_runner: ^2.4.15
   integration_test:
@@ -58,8 +55,13 @@ dev_dependencies:
     sdk: flutter
   test: ^1.25.10
   fake_cloud_firestore: ^3.1.0
-  firebase_auth_mocks: ^0.14.2 # Downgraded for compatibility as suggested
+  firebase_auth_mocks: ^0.14.2
   mocktail: ^1.0.4
 
 flutter:
   uses-material-design: true
+
+  # FIX: Add assets if you have any
+  # assets:
+  #   - assets/images/
+  #   - assets/icons/

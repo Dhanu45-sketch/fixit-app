@@ -1,9 +1,10 @@
 // lib/widgets/booking_card.dart
+// FIXED VERSION - Added proper handling for review feature
 import 'package:flutter/material.dart';
 import '../models/booking_model.dart';
 import '../utils/colors.dart';
 import 'package:intl/intl.dart';
-import '../widgets/review_bottom_sheet.dart'; // NEW IMPORT
+import '../widgets/review_bottom_sheet.dart';
 
 class BookingCard extends StatelessWidget {
   final Booking booking;
@@ -39,8 +40,10 @@ class BookingCard extends StatelessWidget {
     final String formattedDate = DateFormat('dd MMM yyyy').format(booking.scheduledStartTime);
     final String formattedTime = DateFormat('hh:mm a').format(booking.scheduledStartTime);
 
-    // NEW: Determine if we should show the review button
-    final bool canReview = booking.status == 'Completed' && !booking.hasReview;
+    // FIX: Check if booking has hasReview property, otherwise default to false
+    // This prevents runtime errors if the property is missing
+    final bool hasReview = booking.hasReview ?? false;
+    final bool canReview = booking.status == 'Completed' && !hasReview;
 
     return GestureDetector(
       onTap: onTap,
@@ -196,7 +199,7 @@ class BookingCard extends StatelessWidget {
               ],
             ),
 
-            // NEW: Review Button for Completed Jobs
+            // Review Button for Completed Jobs
             if (canReview) ...[
               const SizedBox(height: 12),
               SizedBox(
@@ -229,7 +232,7 @@ class BookingCard extends StatelessWidget {
             ],
 
             // Show if already reviewed
-            if (booking.hasReview) ...[
+            if (hasReview) ...[
               const SizedBox(height: 12),
               Container(
                 padding: const EdgeInsets.all(8),

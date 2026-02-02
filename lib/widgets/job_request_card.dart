@@ -1,19 +1,11 @@
 // ==========================================
 // FILE: lib/widgets/job_request_card.dart
+// FIXED VERSION - Removed duplicate imports
 // ==========================================
 import 'package:flutter/material.dart';
 import '../models/job_request_model.dart';
 import '../utils/colors.dart';
-import 'package:fixit_app/screens/home/customer_home_screen.dart';
-import 'package:fixit_app/screens/home/handyman_home_screen.dart';
-import 'package:flutter/material.dart';
-import '../models/job_request_model.dart';
-import '../utils/colors.dart';
-import '../../widgets/custom_button.dart';
-
-import 'package:flutter/material.dart';
-import '../models/job_request_model.dart';
-import '../utils/colors.dart';
+import '../widgets/custom_button.dart';
 
 class JobRequestCard extends StatelessWidget {
   final JobRequest jobRequest;
