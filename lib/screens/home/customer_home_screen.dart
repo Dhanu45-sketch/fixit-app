@@ -94,14 +94,23 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    _buildSearchBar(),
+                    _buildBookingButton(),
                     const SizedBox(height: 20),
                     _buildEmergencyToggle(), // Emergency toggle
                     const SizedBox(height: 24),
-                    _buildCategoryHeader(),
-                    const SizedBox(height: 12),
+                    _buildSearchBar(),
+                    const SizedBox(height: 32),
+                    const Text(
+                      'Browse Categories',
+                      style: TextStyle(
+                        fontSize: 18,
+                        fontWeight: FontWeight.bold,
+                        color: AppColors.textDark,
+                      ),
+                    ),
+                    const SizedBox(height: 16),
                     _buildCategoriesGrid(),
-                    const SizedBox(height: 24),
+                    const SizedBox(height: 32),
                     Row(
                       mainAxisAlignment: MainAxisAlignment.spaceBetween,
                       children: [
@@ -211,7 +220,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               borderRadius: BorderRadius.circular(8),
             ),
             child: Icon(
-              Icons.emergency,
+              Icons.bolt,
               color: _isEmergencyMode ? Colors.red.shade700 : AppColors.textLight,
               size: 24,
             ),
@@ -222,7 +231,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 const Text(
-                  'Emergency Services',
+                  'Emergency Fix',
                   style: TextStyle(
                     fontSize: 15,
                     fontWeight: FontWeight.bold,
@@ -265,22 +274,52 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
     );
   }
 
-  Widget _buildCategoryHeader() {
-    return Row(
-      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-      children: [
-        const Text('Service Categories', style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold, color: AppColors.textDark)),
-        TextButton(
-          onPressed: () async {
+  Widget _buildBookingButton() {
+    return Container(
+      width: double.infinity,
+      height: 65,
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(16),
+        gradient: LinearGradient(
+          begin: Alignment.topCenter,
+          end: Alignment.bottomCenter,
+          colors: [
+            AppColors.primary,
+            AppColors.primary.withOpacity(0.9),
+          ],
+        ),
+        boxShadow: [
+          BoxShadow(
+            color: AppColors.primary.withOpacity(0.4),
+            blurRadius: 12,
+            offset: const Offset(0, 6),
+          ),
+        ],
+      ),
+      child: Material(
+        color: Colors.transparent,
+        child: InkWell(
+          onTap: () async {
             final categoriesData = await _firestoreService.getServiceCategories().first;
             final categories = categoriesData.map((e) => ServiceCategory.fromMap(e, e['id'])).toList();
             if (mounted) {
               Navigator.push(context, MaterialPageRoute(builder: (_) => AllCategoriesScreen(categories: categories)));
             }
           },
-          child: const Text('See All'),
+          borderRadius: BorderRadius.circular(16),
+          child: const Center(
+            child: Text(
+              'Find Expert Help',
+              style: TextStyle(
+                color: Colors.white,
+                fontSize: 25,
+                fontWeight: FontWeight.bold,
+                letterSpacing: 1.1,
+              ),
+            ),
+          ),
         ),
-      ],
+      ),
     );
   }
 
@@ -305,9 +344,9 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
             final data = categories[index];
             final category = ServiceCategory.fromMap(data, data['id']);
             return CategoryCard(
+              categoryId: category.id, // Fixed: Pass categoryId instead of count
               icon: category.icon,
               name: category.name,
-              count: category.handymenCount,
               onTap: () {
                 Navigator.push(
                   context,

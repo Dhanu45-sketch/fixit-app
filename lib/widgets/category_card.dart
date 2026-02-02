@@ -1,18 +1,19 @@
 // lib/widgets/category_card.dart
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../utils/colors.dart';
 
 class CategoryCard extends StatelessWidget {
+  final String categoryId; // Added categoryId to fetch real-time count
   final String icon;
   final String name;
-  final int count;
   final VoidCallback onTap;
 
   const CategoryCard({
     super.key,
+    required this.categoryId,
     required this.icon,
     required this.name,
-    required this.count,
     required this.onTap,
   });
 
@@ -22,7 +23,6 @@ class CategoryCard extends StatelessWidget {
       onTap: onTap,
       borderRadius: BorderRadius.circular(16),
       child: Container(
-        // Added padding to ensure internal elements don't touch the edges
         padding: const EdgeInsets.all(8.0),
         decoration: BoxDecoration(
           color: Colors.white,
@@ -38,11 +38,9 @@ class CategoryCard extends StatelessWidget {
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
-            // Using a Flexible wrapper for the icon/emoji
-            Text(icon, style: const TextStyle(fontSize: 32)), // Reduced slightly from 40 to save space
+            Text(icon, style: const TextStyle(fontSize: 32)),
             const SizedBox(height: 8),
 
-            // FIX: Use Flexible to prevent the Name from causing overflow
             Flexible(
               child: Text(
                 name,
@@ -51,7 +49,7 @@ class CategoryCard extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
                   fontWeight: FontWeight.bold,
-                  fontSize: 14, // Reduced slightly from 16 to fit constraints
+                  fontSize: 13,
                   color: AppColors.textDark,
                 ),
               ),
@@ -59,15 +57,26 @@ class CategoryCard extends StatelessWidget {
 
             const SizedBox(height: 2),
 
-            // FIX: Keep the count text small and single-line
-            Text(
-              '$count Specialists',
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(
-                fontSize: 11, // Reduced slightly from 12
-                color: AppColors.textLight,
-              ),
+            // Real-time calculation of specialists in this category
+            StreamBuilder<QuerySnapshot>(
+              stream: FirebaseFirestore.instance
+                  .collection('handymanProfiles')
+                  .where('category_id', isEqualTo: categoryId)
+                  .where('work_status', isEqualTo: 'Available')
+                  .snapshots(),
+              builder: (context, snapshot) {
+                final count = snapshot.data?.docs.length ?? 0;
+                return Text(
+                  '$count Available',
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 10,
+                    fontWeight: FontWeight.w600,
+                    color: count > 0 ? AppColors.success : AppColors.textLight,
+                  ),
+                );
+              },
             ),
           ],
         ),

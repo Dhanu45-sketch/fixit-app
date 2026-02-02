@@ -5,8 +5,6 @@ import '../../utils/colors.dart';
 import '../services/service_detail_screen.dart';
 
 class AllCategoriesScreen extends StatelessWidget {
-  // We keep this as a list for initial display,
-  // but we will use a model-based navigation approach.
   final List<ServiceCategory> categories;
 
   const AllCategoriesScreen({
@@ -31,19 +29,17 @@ class AllCategoriesScreen extends StatelessWidget {
           crossAxisCount: 2,
           crossAxisSpacing: 16,
           mainAxisSpacing: 16,
-          childAspectRatio: 0.9, // Adjusted for better text fit
+          childAspectRatio: 0.9, 
         ),
         itemCount: categories.length,
         itemBuilder: (context, index) {
           final category = categories[index];
 
           return CategoryCard(
+            categoryId: category.id, // Fixed: Pass categoryId for real-time count
             icon: category.icon,
             name: category.name,
-            count: category.handymenCount,
             onTap: () {
-              // FIXED: Pass the WHOLE category object to match
-              // the constructor of ServiceDetailScreen
               Navigator.push(
                 context,
                 MaterialPageRoute(
