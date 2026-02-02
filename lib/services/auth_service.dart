@@ -33,13 +33,11 @@ class AuthService {
     required String password,
   }) async {
     try {
-      // 1. Create User in Firebase Auth
       UserCredential result = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
       );
 
-      // 2. Create User Profile in Firestore
       await _db.collection('users').doc(result.user!.uid).set({
         'first_name': firstName,
         'last_name': lastName,
@@ -69,10 +67,9 @@ class AuthService {
     required int experience,
     required double hourlyRate,
     String? bio,
-    bool acceptsEmergencies = false, // NEW: Emergency opt-in
+    bool acceptsEmergencies = false,
   }) async {
     try {
-      // 1. Create User in Firebase Auth
       UserCredential result = await _auth.createUserWithEmailAndPassword(
         email: email,
         password: password,
@@ -80,7 +77,7 @@ class AuthService {
 
       final String uid = result.user!.uid;
 
-      // 2. Create Basic User Profile
+      // 1. Basic Profile
       await _db.collection('users').doc(uid).set({
         'first_name': firstName,
         'last_name': lastName,
@@ -92,7 +89,7 @@ class AuthService {
         'updated_at': FieldValue.serverTimestamp(),
       });
 
-      // 3. Create Detailed Handyman Profile with Approval Status
+      // 2. Handyman Statistics Profile
       await _db.collection('handymanProfiles').doc(uid).set({
         'user_id': uid,
         'category_id': categoryId,
@@ -101,21 +98,15 @@ class AuthService {
         'hourly_rate': hourlyRate,
         'bio': bio ?? '',
         'rating_avg': 0.0,
+        'rating_count': 0,
         'jobs_completed': 0,
+        'total_earnings': 0.0,
         'work_status': "Available",
-        
-        // EMERGENCY CONFIGURATION
         'accepts_emergencies': acceptsEmergencies,
-        'emergency_earnings': 0.0, // Track total emergency earnings
-        'emergency_jobs_count': 0, // Track emergency jobs completed
-        
-        // APPROVAL SYSTEM
-        'approval_status': 'pending', // pending, approved, rejected, suspended
+        'emergency_earnings': 0.0,
+        'emergency_jobs_count': 0,
+        'approval_status': 'pending',
         'approval_submitted_at': FieldValue.serverTimestamp(),
-        'approval_reviewed_at': null,
-        'approval_reviewed_by': null,
-        'approval_rejection_reason': null,
-        
         'updated_at': FieldValue.serverTimestamp(),
       });
 
@@ -125,12 +116,12 @@ class AuthService {
     }
   }
 
-  // --- CHECK APPROVAL STATUS ---
   Future<String?> getHandymanApprovalStatus(String userId) async {
     try {
       final doc = await _db.collection('handymanProfiles').doc(userId).get();
       if (doc.exists) {
-        return doc.data()?['approval_status'] as String?;
+        final data = doc.data();
+        return data != null ? data['approval_status'] as String? : null;
       }
       return null;
     } catch (e) {
@@ -138,13 +129,8 @@ class AuthService {
     }
   }
 
-  // --- UTILS ---
   Future<void> signOut() async {
-    try {
-      await _auth.signOut();
-    } catch (e) {
-      rethrow;
-    }
+    await _auth.signOut();
   }
 
   Future<Map<String, dynamic>?> getCurrentUserProfile() async {

@@ -8,6 +8,7 @@ environment:
   sdk: ^3.9.2
 
 dependencies:
+  url_launcher: ^6.2.1  # NEW - For opening Google Maps
   google_maps_flutter: ^2.5.3
   location: ^5.0.3 # Optional: to show the user's current location
   image_picker: ^1.0.7

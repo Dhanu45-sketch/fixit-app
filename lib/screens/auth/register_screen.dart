@@ -5,8 +5,9 @@ import '../../services/firestore_service.dart';
 import '../../utils/colors.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/custom_textfield.dart';
+import '../../widgets/document_upload_widget.dart'; // Added import
 import '../home/customer_home_screen.dart';
-import 'approval_pending_screen.dart'; // NEW: Import approval pending screen
+import 'approval_pending_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
   final bool isHandyman;
@@ -36,13 +37,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
   final _hourlyRateController = TextEditingController();
   final _bioController = TextEditingController();
 
-  // NEW: Emergency opt-in
   bool _acceptsEmergencies = false;
-
   bool _obscurePassword = true;
   bool _obscureConfirmPassword = true;
   bool _isLoading = false;
   String? _errorMessage;
+
+  // NEW: Multi-step registration for Handymen
+  int _currentStep = 0; // 0: Info, 1: Documents
+  String? _registeredUserId;
 
   @override
   void dispose() {
@@ -78,7 +81,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
 
     try {
       if (widget.isHandyman) {
-        await _authService.registerHandyman(
+        final result = await _authService.registerHandyman(
           firstName: _firstNameController.text.trim(),
           lastName: _lastNameController.text.trim(),
           email: _emailController.text.trim(),
@@ -89,14 +92,15 @@ class _RegisterScreenState extends State<RegisterScreen> {
           experience: int.tryParse(_experienceController.text) ?? 0,
           hourlyRate: double.tryParse(_hourlyRateController.text) ?? 0.0,
           bio: _bioController.text.trim().isEmpty ? null : _bioController.text.trim(),
-          acceptsEmergencies: _acceptsEmergencies, // NEW: Pass emergency opt-in
+          acceptsEmergencies: _acceptsEmergencies,
         );
 
         if (mounted) {
-          // NEW: Navigate to approval pending screen instead of home
-          Navigator.of(context).pushReplacement(
-            MaterialPageRoute(builder: (_) => const ApprovalPendingScreen()),
-          );
+          setState(() {
+            _isLoading = false;
+            _currentStep = 1; // Move to Step 2: Documents
+            _registeredUserId = result?.user?.uid;
+          });
         }
       } else {
         await _authService.registerCustomer(
@@ -136,56 +140,103 @@ class _RegisterScreenState extends State<RegisterScreen> {
       body: SafeArea(
         child: SingleChildScrollView(
           padding: const EdgeInsets.all(24.0),
-          child: Form(
-            key: _formKey,
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                if (_errorMessage != null) _buildErrorWidget(),
-
-                const Text(
-                  'Basic Information',
-                  style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                ),
-                const SizedBox(height: 16),
-
-                _buildBasicFields(),
-
-                if (widget.isHandyman) ...[
-                  const SizedBox(height: 32),
-                  const Text(
-                    'Professional Information',
-                    style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
-                  ),
-                  const SizedBox(height: 16),
-                  _buildCategoryDropdown(),
-                  const SizedBox(height: 16),
-                  _buildProfessionalFields(),
-
-                  // NEW: Emergency Services Section
-                  const SizedBox(height: 32),
-                  _buildEmergencySection(),
-                ],
-
-                const SizedBox(height: 32),
-
-                CustomButton(
-                  text: widget.isHandyman ? 'Register as Handyman' : 'Register as Customer',
-                  onPressed: _handleRegister,
-                  isLoading: _isLoading,
-                ),
-
-                const SizedBox(height: 16),
-                _buildLoginRedirect(),
-              ],
-            ),
-          ),
+          child: widget.isHandyman && _currentStep == 1 
+            ? _buildDocumentStep() 
+            : _buildRegistrationForm(),
         ),
       ),
     );
   }
 
-  // NEW: Emergency Services Section
+  Widget _buildRegistrationForm() {
+    return Form(
+      key: _formKey,
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          if (_errorMessage != null) _buildErrorWidget(),
+
+          const Text(
+            'Basic Information',
+            style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+          ),
+          const SizedBox(height: 16),
+
+          _buildBasicFields(),
+
+          if (widget.isHandyman) ...[
+            const SizedBox(height: 32),
+            const Text(
+              'Professional Information',
+              style: TextStyle(fontSize: 18, fontWeight: FontWeight.bold),
+            ),
+            const SizedBox(height: 16),
+            _buildCategoryDropdown(),
+            const SizedBox(height: 16),
+            _buildProfessionalFields(),
+            const SizedBox(height: 32),
+            _buildEmergencySection(),
+          ],
+
+          const SizedBox(height: 32),
+
+          CustomButton(
+            text: widget.isHandyman ? 'Continue to Verification' : 'Register as Customer',
+            onPressed: _handleRegister,
+            isLoading: _isLoading,
+          ),
+
+          const SizedBox(height: 16),
+          _buildLoginRedirect(),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDocumentStep() {
+    return Column(
+      children: [
+        // Progress indicator
+        Row(
+          children: [
+            const Icon(Icons.check_circle, color: AppColors.success),
+            const SizedBox(width: 8),
+            const Text('Account Created', style: TextStyle(fontWeight: FontWeight.bold)),
+            const Spacer(),
+            Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+              decoration: BoxDecoration(
+                color: AppColors.secondary.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(20),
+              ),
+              child: const Text('Step 2/2', style: TextStyle(color: AppColors.secondary, fontWeight: FontWeight.bold)),
+            ),
+          ],
+        ),
+        const SizedBox(height: 24),
+        
+        DocumentUploadWidget(
+          userId: _registeredUserId!,
+          onUploadComplete: () {
+            Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (_) => const ApprovalPendingScreen()),
+            );
+          },
+        ),
+        
+        const SizedBox(height: 16),
+        TextButton(
+          onPressed: () {
+             Navigator.of(context).pushReplacement(
+              MaterialPageRoute(builder: (_) => const ApprovalPendingScreen()),
+            );
+          },
+          child: const Text('Upload Later (Your account will remain pending)', style: TextStyle(color: AppColors.textLight)),
+        ),
+      ],
+    );
+  }
+
   Widget _buildEmergencySection() {
     return Container(
       padding: const EdgeInsets.all(16),
@@ -233,86 +284,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
               color: _acceptsEmergencies ? Colors.red.shade700 : AppColors.textLight,
             ),
           ),
-          if (_acceptsEmergencies) ...[
-            const SizedBox(height: 12),
-            Container(
-              padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(color: Colors.red.shade200),
-              ),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Row(
-                    children: [
-                      Icon(Icons.trending_up, color: Colors.red.shade700, size: 20),
-                      const SizedBox(width: 8),
-                      Text(
-                        'Earn 15% More!',
-                        style: TextStyle(
-                          color: Colors.red.shade700,
-                          fontWeight: FontWeight.bold,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'Emergency jobs pay 15% more than standard rates. '
-                        'Customers pay extra for urgent, priority service.',
-                    style: TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey.shade700,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  const Divider(),
-                  const SizedBox(height: 8),
-                  Row(
-                    children: const [
-                      Icon(Icons.check_circle, color: AppColors.success, size: 16),
-                      SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Priority job notifications',
-                          style: TextStyle(fontSize: 12),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: const [
-                      Icon(Icons.check_circle, color: AppColors.success, size: 16),
-                      SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Higher earnings potential',
-                          style: TextStyle(fontSize: 12),
-                        ),
-                      ),
-                    ],
-                  ),
-                  const SizedBox(height: 4),
-                  Row(
-                    children: const [
-                      Icon(Icons.check_circle, color: AppColors.success, size: 16),
-                      SizedBox(width: 8),
-                      Expanded(
-                        child: Text(
-                          'Build emergency service reputation',
-                          style: TextStyle(fontSize: 12),
-                        ),
-                      ),
-                    ],
-                  ),
-                ],
-              ),
-            ),
-          ],
         ],
       ),
     );
@@ -423,7 +394,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
           return const Padding(
             padding: EdgeInsets.all(8.0),
             child: Text(
-              'No categories found. Ensure collection name is "serviceCategories" in Firestore.',
+              'No categories found.',
               style: TextStyle(color: Colors.orange, fontSize: 12),
             ),
           );
@@ -436,10 +407,6 @@ class _RegisterScreenState extends State<RegisterScreen> {
             labelText: 'Service Category',
             prefixIcon: const Icon(Icons.category_outlined),
             border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
-            focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: AppColors.secondary, width: 2),
-            ),
           ),
           value: _selectedCategoryId,
           items: categories.map((cat) {

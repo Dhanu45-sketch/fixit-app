@@ -56,17 +56,12 @@ class _ReviewBottomSheetState extends State<ReviewBottomSheet> {
       final userId = _authService.currentUserId;
       if (userId == null) throw Exception('User not logged in');
 
-      final userProfile = await _firestoreService.getUserProfile(userId);
-      final customerName = "${userProfile?['first_name'] ?? ''} ${userProfile?['last_name'] ?? ''}".trim();
-
-      await _firestoreService.submitReview(
-        handymanId: widget.handymanId,
-        customerId: userId,
-        customerName: customerName,
+      // createReview handles fetching user name and validation internally
+      await _firestoreService.createReview(
         bookingId: widget.bookingId,
-        rating: _rating,
+        handymanId: widget.handymanId,
+        rating: _rating.toDouble(),
         comment: _commentController.text.trim(),
-        customerPhoto: userProfile?['profile_photo'],
       );
 
       if (mounted) {

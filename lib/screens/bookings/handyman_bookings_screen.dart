@@ -4,7 +4,7 @@ import '../../models/booking_model.dart';
 import '../../services/firestore_service.dart';
 import '../../utils/colors.dart';
 import 'package:intl/intl.dart';
-import 'booking_detail_screen.dart'; // Import the detail screen
+import 'booking_detail_screen.dart';
 
 class HandymanBookingsScreen extends StatefulWidget {
   const HandymanBookingsScreen({Key? key}) : super(key: key);
@@ -63,9 +63,16 @@ class _HandymanBookingsScreenState extends State<HandymanBookingsScreen>
           return TabBarView(
             controller: _tabController,
             children: [
+              // Requests: New bookings
               _buildBookingList(all.where((b) => b.status == 'Pending').toList(), 'requests'),
-              _buildBookingList(all.where((b) => b.status == 'Confirmed').toList(), 'upcoming'),
-              _buildBookingList(all.where((b) => b.status == 'In Progress').toList(), 'ongoing'),
+              
+              // Upcoming: Confirmed or Accepted bookings
+              _buildBookingList(all.where((b) => b.status == 'Confirmed' || b.status == 'Accepted').toList(), 'upcoming'),
+              
+              // Ongoing: Currently traveling or working
+              _buildBookingList(all.where((b) => b.status == 'On The Way' || b.status == 'In Progress').toList(), 'ongoing'),
+              
+              // History: Finished or closed bookings
               _buildBookingList(all.where((b) => b.status == 'Completed' || b.status == 'Cancelled' || b.status == 'Rejected').toList(), 'history'),
             ],
           );
@@ -120,7 +127,6 @@ class _HandymanBookingsScreenState extends State<HandymanBookingsScreen>
               ],
             ),
             trailing: const Icon(Icons.chevron_right),
-            // THIS IS THE KEY FIX - Navigate to detail screen
             onTap: () {
               Navigator.push(
                 context,
@@ -142,6 +148,8 @@ class _HandymanBookingsScreenState extends State<HandymanBookingsScreen>
       case 'confirmed':
       case 'accepted':
         return Colors.green;
+      case 'on the way':
+        return Colors.blueAccent;
       case 'in progress':
         return AppColors.primary;
       case 'completed':

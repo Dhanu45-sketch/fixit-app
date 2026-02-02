@@ -146,7 +146,7 @@ class _ReviewsSectionState extends State<ReviewsSection> {
 
           // Recent reviews list
           StreamBuilder<List<Review>>(
-            stream: _firestoreService.getHandymanReviews(widget.handymanId, limit: 3),
+            stream: _firestoreService.getHandymanReviews(widget.handymanId, limit: 10),
             builder: (context, snapshot) {
               if (snapshot.connectionState == ConnectionState.waiting) {
                 return const Center(child: CircularProgressIndicator());

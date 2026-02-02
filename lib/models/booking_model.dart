@@ -7,14 +7,20 @@ class Booking {
   final String handymanId;
   final String customerName;
   final String serviceName;
-  final String status;
+  final String status; // Pending, Confirmed, On The Way, In Progress, Completed, Cancelled
   final DateTime scheduledStartTime;
   final double totalPrice;
   final String notes;
   final String address;
   final bool isEmergency;
-  final bool hasReview;    // NEW: Track if booking has been reviewed
-  final String? reviewId;  // NEW: Link to review document
+  
+  // Review fields
+  final bool hasReview;
+  final String? reviewId;
+
+  // Navigation fields
+  final DateTime? navigationStartedAt;  // When handyman started navigation
+  final DateTime? arrivedAt;            // When handyman marked as arrived
 
   Booking({
     required this.id,
@@ -30,8 +36,17 @@ class Booking {
     this.isEmergency = false,
     this.hasReview = false,
     this.reviewId,
+    this.navigationStartedAt,
+    this.arrivedAt,
   });
 
+  // Helper to check if handyman is on the way
+  bool get isOnTheWay => status == 'On The Way';
+
+  // Helper to check if handyman has arrived
+  bool get hasArrived => arrivedAt != null;
+
+  // Convert Firestore Document to Booking Object
   factory Booking.fromFirestore(DocumentSnapshot doc) {
     Map<String, dynamic> data = doc.data() as Map<String, dynamic>;
     return Booking(
@@ -48,9 +63,18 @@ class Booking {
       isEmergency: data['is_emergency'] ?? false,
       hasReview: data['has_review'] ?? false,
       reviewId: data['review_id'],
+      
+      // Navigation Fields
+      navigationStartedAt: data['navigation_started_at'] != null
+          ? (data['navigation_started_at'] as Timestamp).toDate()
+          : null,
+      arrivedAt: data['arrived_at'] != null
+          ? (data['arrived_at'] as Timestamp).toDate()
+          : null,
     );
   }
 
+  // Convert Booking Object to Map for saving to Firestore
   Map<String, dynamic> toMap() {
     return {
       'customer_id': customerId,
@@ -65,6 +89,41 @@ class Booking {
       'is_emergency': isEmergency,
       'has_review': hasReview,
       'review_id': reviewId,
+      
+      // Navigation Fields
+      'navigation_started_at': navigationStartedAt != null
+          ? Timestamp.fromDate(navigationStartedAt!)
+          : null,
+      'arrived_at': arrivedAt != null
+          ? Timestamp.fromDate(arrivedAt!)
+          : null,
     };
+  }
+
+  // Create a copy with updated fields
+  Booking copyWith({
+    String? status,
+    DateTime? navigationStartedAt,
+    DateTime? arrivedAt,
+    bool? hasReview,
+    String? reviewId,
+  }) {
+    return Booking(
+      id: id,
+      customerId: customerId,
+      handymanId: handymanId,
+      customerName: customerName,
+      serviceName: serviceName,
+      status: status ?? this.status,
+      scheduledStartTime: scheduledStartTime,
+      totalPrice: totalPrice,
+      notes: notes,
+      address: address,
+      isEmergency: isEmergency,
+      hasReview: hasReview ?? this.hasReview,
+      reviewId: reviewId ?? this.reviewId,
+      navigationStartedAt: navigationStartedAt ?? this.navigationStartedAt,
+      arrivedAt: arrivedAt ?? this.arrivedAt,
+    );
   }
 }

@@ -6,6 +6,7 @@ import '../../utils/colors.dart';
 import '../profile/profile_screen.dart';
 import '../bookings/handyman_bookings_screen.dart';
 import '../notifications/notifications_screen.dart';
+import '../bookings/booking_detail_screen.dart';
 
 class HandymanHomeScreen extends StatefulWidget {
   const HandymanHomeScreen({Key? key}) : super(key: key);
@@ -20,10 +21,9 @@ class _HandymanHomeScreenState extends State<HandymanHomeScreen> {
 
   int _selectedIndex = 0;
   bool _isAvailable = true;
-  bool _acceptsEmergencies = false; // NEW: Emergency toggle state
+  bool _acceptsEmergencies = false;
   String? _userId;
   Map<String, dynamic>? _userProfile;
-  Map<String, dynamic>? _handymanProfile;
 
   @override
   void initState() {
@@ -42,9 +42,8 @@ class _HandymanHomeScreenState extends State<HandymanHomeScreen> {
       if (mounted) {
         setState(() {
           _userProfile = user;
-          _handymanProfile = handymanData;
           _isAvailable = handymanData?['work_status'] == 'Available';
-          _acceptsEmergencies = handymanData?['accepts_emergencies'] ?? false; // NEW: Load emergency status
+          _acceptsEmergencies = handymanData?['accepts_emergencies'] ?? false;
         });
       }
     } catch (e) {
@@ -79,7 +78,6 @@ class _HandymanHomeScreenState extends State<HandymanHomeScreen> {
     }
   }
 
-  // NEW: Toggle emergency services
   Future<void> _toggleEmergencyServices(bool value) async {
     if (_userId == null) return;
 
@@ -132,18 +130,27 @@ class _HandymanHomeScreenState extends State<HandymanHomeScreen> {
   }
 
   Widget _buildHomeTab() {
-    return RefreshIndicator(
-      onRefresh: _loadProfiles,
-      child: CustomScrollView(
-        slivers: [
-          _buildHeader(),
-          _buildStatsRow(),
-          _buildEmergencySection(), // NEW: Emergency services section
-          _buildSectionHeader('Upcoming Bookings', () => setState(() => _selectedIndex = 1)),
-          _buildBookingsStream(),
-          const SliverToBoxAdapter(child: SizedBox(height: 100)),
-        ],
-      ),
+    if (_userId == null) return const Center(child: CircularProgressIndicator());
+
+    return StreamBuilder<Map<String, dynamic>?>(
+      stream: _firestoreService.getHandymanProfileStream(_userId!),
+      builder: (context, snapshot) {
+        final handymanProfile = snapshot.data;
+        
+        return RefreshIndicator(
+          onRefresh: _loadProfiles,
+          child: CustomScrollView(
+            slivers: [
+              _buildHeader(),
+              _buildStatsRow(handymanProfile),
+              _buildEmergencySection(handymanProfile),
+              _buildSectionHeader('Upcoming Bookings', () => setState(() => _selectedIndex = 1)),
+              _buildBookingsStream(),
+              const SliverToBoxAdapter(child: SizedBox(height: 100)),
+            ],
+          ),
+        );
+      },
     );
   }
 
@@ -160,7 +167,7 @@ class _HandymanHomeScreenState extends State<HandymanHomeScreen> {
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Text('Welcome Back! 👋', style: const TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
+              const Text('Welcome Back! 👋', style: TextStyle(fontSize: 24, fontWeight: FontWeight.bold, color: Colors.white)),
               Text(_userProfile?['first_name'] ?? 'Handyman', style: const TextStyle(fontSize: 18, color: Colors.white70)),
               const SizedBox(height: 20),
               _buildAvailabilitySwitch(),
@@ -190,158 +197,74 @@ class _HandymanHomeScreenState extends State<HandymanHomeScreen> {
     );
   }
 
-  Widget _buildStatsRow() {
+  Widget _buildStatsRow(Map<String, dynamic>? profile) {
+    // Robustly handle missing or null data fields
+    final String jobsDone = (profile?['jobs_completed'] ?? 0).toString();
+    final String earnings = (profile?['total_earnings'] ?? 0.0).toStringAsFixed(0);
+    final String rating = (profile?['rating_avg'] ?? 0.0).toStringAsFixed(1);
+
     return SliverToBoxAdapter(
       child: Padding(
         padding: const EdgeInsets.all(20),
         child: Row(
           children: [
-            _buildStatCard('${_handymanProfile?['jobs_completed'] ?? 0}', 'Jobs Done', Icons.check_circle, AppColors.success),
+            _buildStatCard(jobsDone, 'Jobs Done', Icons.check_circle, AppColors.success),
             const SizedBox(width: 12),
-            _buildStatCard('Rs ${(_handymanProfile?['hourly_rate'] ?? 0).toStringAsFixed(0)}', 'Rate/hr', Icons.payments, AppColors.primary),
+            _buildStatCard('Rs $earnings', 'Earned', Icons.account_balance_wallet, AppColors.primary),
             const SizedBox(width: 12),
-            _buildStatCard('${(_handymanProfile?['rating_avg'] ?? 0.0).toStringAsFixed(1)}', 'Rating', Icons.star, Colors.amber),
+            _buildStatCard(rating, 'Rating', Icons.star, Colors.amber),
           ],
         ),
       ),
     );
   }
 
-  // NEW: Emergency Services Section
-  Widget _buildEmergencySection() {
-    final double emergencyEarnings = (_handymanProfile?['emergency_earnings'] ?? 0.0).toDouble();
-    final int emergencyJobsCount = _handymanProfile?['emergency_jobs_count'] ?? 0;
-    final double baseRate = (_handymanProfile?['hourly_rate'] ?? 0.0).toDouble();
-    final double emergencyRate = FirestoreService.calculateEmergencyPrice(baseRate);
+  Widget _buildEmergencySection(Map<String, dynamic>? profile) {
+    final bool active = profile?['accepts_emergencies'] ?? false;
+    final double earnings = (profile?['emergency_earnings'] ?? 0.0).toDouble();
+    final int count = profile?['emergency_jobs_count'] ?? 0;
+    final double baseRate = (profile?['hourly_rate'] ?? 0.0).toDouble();
+    final double emergencyRate = baseRate * 1.15;
 
     return SliverToBoxAdapter(
       child: Container(
         margin: const EdgeInsets.symmetric(horizontal: 20),
         padding: const EdgeInsets.all(16),
         decoration: BoxDecoration(
-          color: _acceptsEmergencies ? Colors.red.shade50 : Colors.white,
+          color: active ? Colors.red.shade50 : Colors.white,
           borderRadius: BorderRadius.circular(16),
           border: Border.all(
-            color: _acceptsEmergencies ? Colors.red.shade300 : Colors.grey.shade200,
-            width: _acceptsEmergencies ? 2 : 1,
+            color: active ? Colors.red.shade300 : Colors.grey.shade200,
+            width: active ? 2 : 1,
           ),
-          boxShadow: [
-            BoxShadow(
-              color: Colors.black.withOpacity(_acceptsEmergencies ? 0.1 : 0.05),
-              blurRadius: 10,
-              offset: const Offset(0, 4),
-            ),
-          ],
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
             Row(
               children: [
-                Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: _acceptsEmergencies ? Colors.red.shade100 : AppColors.background,
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                  child: Icon(
-                    Icons.emergency,
-                    color: _acceptsEmergencies ? Colors.red.shade700 : AppColors.textLight,
-                    size: 24,
-                  ),
-                ),
+                Icon(Icons.emergency, color: active ? Colors.red.shade700 : AppColors.textLight),
                 const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      const Text(
-                        'Emergency Services',
-                        style: TextStyle(
-                          fontSize: 16,
-                          fontWeight: FontWeight.bold,
-                        ),
-                      ),
-                      Text(
-                        _acceptsEmergencies ? 'Active - Receiving priority jobs' : 'Earn 15% more with emergencies',
-                        style: TextStyle(
-                          fontSize: 12,
-                          color: _acceptsEmergencies ? Colors.red.shade700 : AppColors.textLight,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+                const Expanded(child: Text('Emergency Services', style: TextStyle(fontWeight: FontWeight.bold))),
                 Switch(
-                  value: _acceptsEmergencies,
+                  value: active,
                   onChanged: _toggleEmergencyServices,
-                  activeColor: Colors.white,
-                  activeTrackColor: Colors.red.shade700,
-                  inactiveThumbColor: Colors.white,
-                  inactiveTrackColor: Colors.grey.shade300,
+                  activeColor: Colors.red.shade700,
                 ),
               ],
             ),
-
-            if (_acceptsEmergencies) ...[
-              const Divider(height: 24),
-
-              // Emergency Earnings Stats
+            if (active) ...[
+              const Divider(),
               Row(
                 children: [
-                  Expanded(
-                    child: _buildEmergencyStatCard(
-                      'Rs ${emergencyEarnings.toStringAsFixed(0)}',
-                      'Emergency Earnings',
-                      Icons.trending_up,
-                    ),
-                  ),
+                  Expanded(child: _buildEmergencyStatCard('Rs ${earnings.toStringAsFixed(0)}', 'Income', Icons.trending_up)),
                   const SizedBox(width: 12),
-                  Expanded(
-                    child: _buildEmergencyStatCard(
-                      '$emergencyJobsCount',
-                      'Emergency Jobs',
-                      Icons.bolt,
-                    ),
-                  ),
+                  Expanded(child: _buildEmergencyStatCard('$count', 'Jobs', Icons.bolt)),
                 ],
               ),
-
-              const SizedBox(height: 12),
-
-              // Rate comparison
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: Colors.white,
-                  borderRadius: BorderRadius.circular(8),
-                ),
-                child: Column(
-                  children: [
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        const Text('Standard Rate:', style: TextStyle(fontSize: 13)),
-                        Text('Rs ${baseRate.toStringAsFixed(0)}/hr', style: const TextStyle(fontSize: 13)),
-                      ],
-                    ),
-                    const SizedBox(height: 4),
-                    Row(
-                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                      children: [
-                        Text(
-                          'Emergency Rate:',
-                          style: TextStyle(fontSize: 13, color: Colors.red.shade700, fontWeight: FontWeight.w600),
-                        ),
-                        Text(
-                          'Rs ${emergencyRate.toStringAsFixed(0)}/hr (+15%)',
-                          style: TextStyle(fontSize: 13, color: Colors.red.shade700, fontWeight: FontWeight.w600),
-                        ),
-                      ],
-                    ),
-                  ],
-                ),
-              ),
+              const SizedBox(height: 8),
+              Text('Emergency Rate: Rs ${emergencyRate.toStringAsFixed(0)}/hr (+15%)', 
+                style: TextStyle(fontSize: 12, color: Colors.red.shade700, fontWeight: FontWeight.bold)),
             ],
           ],
         ),
@@ -350,31 +273,12 @@ class _HandymanHomeScreenState extends State<HandymanHomeScreen> {
   }
 
   Widget _buildEmergencyStatCard(String value, String label, IconData icon) {
-    return Container(
-      padding: const EdgeInsets.all(12),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(8),
-      ),
-      child: Column(
-        children: [
-          Icon(icon, color: Colors.red.shade700, size: 20),
-          const SizedBox(height: 4),
-          Text(
-            value,
-            style: TextStyle(
-              fontSize: 16,
-              fontWeight: FontWeight.bold,
-              color: Colors.red.shade700,
-            ),
-          ),
-          Text(
-            label,
-            style: const TextStyle(fontSize: 10, color: AppColors.textLight),
-            textAlign: TextAlign.center,
-          ),
-        ],
-      ),
+    return Column(
+      children: [
+        Icon(icon, color: Colors.red.shade700, size: 18),
+        Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
+        Text(label, style: const TextStyle(fontSize: 10, color: AppColors.textLight)),
+      ],
     );
   }
 
@@ -384,17 +288,26 @@ class _HandymanHomeScreenState extends State<HandymanHomeScreen> {
     return StreamBuilder<List<Booking>>(
       stream: _firestoreService.getHandymanBookings(_userId!),
       builder: (context, snapshot) {
-        if (!snapshot.hasData) return const SliverToBoxAdapter(child: Center(child: CircularProgressIndicator()));
+        if (snapshot.hasError) {
+          return const SliverToBoxAdapter(child: Center(child: Text('Error loading bookings')));
+        }
+        
+        if (!snapshot.hasData) {
+          return const SliverToBoxAdapter(child: Center(child: CircularProgressIndicator()));
+        }
 
-        final bookings = snapshot.data!.where((b) => b.status == 'Confirmed' || b.status == 'Pending').toList();
+        final bookings = snapshot.data!.where((b) => 
+          b.status == 'Confirmed' || b.status == 'Pending' || 
+          b.status == 'On The Way' || b.status == 'In Progress'
+        ).toList();
 
         if (bookings.isEmpty) {
-          return SliverToBoxAdapter(child: _buildEmptyState());
+          return _buildEmptyState();
         }
 
         return SliverList(
           delegate: SliverChildBuilderDelegate(
-                (context, index) => _buildBookingCard(bookings[index]),
+            (context, index) => _buildBookingCard(bookings[index]),
             childCount: bookings.length > 3 ? 3 : bookings.length,
           ),
         );
@@ -403,48 +316,42 @@ class _HandymanHomeScreenState extends State<HandymanHomeScreen> {
   }
 
   Widget _buildBookingCard(Booking booking) {
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(16),
-        border: booking.isEmergency
-            ? Border.all(color: Colors.red.shade300, width: 2)
-            : null,
-        boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            mainAxisAlignment: MainAxisAlignment.spaceBetween,
-            children: [
-              Row(
-                children: [
-                  if (booking.isEmergency)
-                    Icon(Icons.emergency, color: Colors.red.shade700, size: 20),
-                  if (booking.isEmergency) const SizedBox(width: 8),
-                  Text(booking.serviceName, style: const TextStyle(fontWeight: FontWeight.bold)),
-                ],
-              ),
-              Text(
-                booking.status,
-                style: TextStyle(
-                  color: booking.status == 'Confirmed' ? AppColors.success : Colors.orange,
-                  fontSize: 12,
-                ),
-              ),
-            ],
+    return GestureDetector(
+      onTap: () {
+        Navigator.push(
+          context,
+          MaterialPageRoute(
+            builder: (_) => BookingDetailScreen(booking: booking),
           ),
-          const SizedBox(height: 8),
-          Text(booking.customerName, style: const TextStyle(color: AppColors.textLight)),
-        ],
+        );
+      },
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 20, vertical: 8),
+        padding: const EdgeInsets.all(16),
+        decoration: BoxDecoration(
+          color: Colors.white,
+          borderRadius: BorderRadius.circular(16),
+          border: booking.isEmergency ? Border.all(color: Colors.red.shade300, width: 2) : null,
+          boxShadow: [BoxShadow(color: Colors.black.withOpacity(0.05), blurRadius: 10)],
+        ),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              children: [
+                Text(booking.serviceName, style: const TextStyle(fontWeight: FontWeight.bold)),
+                Text(booking.status, style: const TextStyle(color: AppColors.primary, fontSize: 12, fontWeight: FontWeight.bold)),
+              ],
+            ),
+            const SizedBox(height: 4),
+            Text(booking.customerName, style: const TextStyle(color: AppColors.textLight)),
+          ],
+        ),
       ),
     );
   }
 
-  // Helper Widgets
   Widget _buildStatCard(String val, String label, IconData icon, Color color) {
     return Expanded(
       child: Container(
@@ -478,9 +385,11 @@ class _HandymanHomeScreenState extends State<HandymanHomeScreen> {
   }
 
   Widget _buildEmptyState() {
-    return Padding(
-      padding: const EdgeInsets.all(20),
-      child: Center(child: Text('No upcoming jobs', style: TextStyle(color: AppColors.textLight))),
+    return const SliverToBoxAdapter(
+      child: Padding(
+        padding: EdgeInsets.all(20),
+        child: Center(child: Text('No upcoming jobs', style: TextStyle(color: AppColors.textLight))),
+      ),
     );
   }
 
