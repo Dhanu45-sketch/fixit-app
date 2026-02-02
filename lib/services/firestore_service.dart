@@ -111,6 +111,69 @@ class FirestoreService {
     });
   }
 
+  /// Update handyman work status (Available/Unavailable)
+  Future<void> updateHandymanWorkStatus(String handymanId, String status) async {
+    try {
+      await _db.collection('handymanProfiles').doc(handymanId).update({
+        'work_status': status,
+        'updated_at': FieldValue.serverTimestamp(),
+      });
+      debugPrint('✅ Work status updated to: $status');
+    } catch (e) {
+      debugPrint('❌ Error updating work status: $e');
+      rethrow;
+    }
+  }
+
+  /// Update handyman stats after job completion or review
+  Future<void> updateHandymanStats(String handymanId) async {
+    try {
+      // Get all completed jobs
+      final completedJobs = await _db
+          .collection('bookings')
+          .where('handyman_id', isEqualTo: handymanId)
+          .where('status', isEqualTo: 'Completed')
+          .get();
+
+      final jobCount = completedJobs.docs.length;
+
+      // Get all reviews
+      final reviews = await _db
+          .collection('reviews')
+          .where('handyman_id', isEqualTo: handymanId)
+          .get();
+
+      double avgRating = 0.0;
+      if (reviews.docs.isNotEmpty) {
+        final totalRating = reviews.docs.fold<double>(
+          0.0,
+          (sum, doc) => sum + ((doc.data()['rating'] ?? 0.0) as num).toDouble(),
+        );
+        avgRating = totalRating / reviews.docs.length;
+      }
+
+      // Calculate total earnings
+      double earnings = completedJobs.docs.fold<double>(
+        0.0,
+        (sum, doc) => sum + ((doc.data()['total_price'] ?? 0.0) as num).toDouble(),
+      );
+
+      // Update profile
+      await _db.collection('handymanProfiles').doc(handymanId).update({
+        'jobs_completed': jobCount,
+        'rating_avg': avgRating,
+        'rating_count': reviews.docs.length,
+        'total_earnings': earnings,
+        'updated_at': FieldValue.serverTimestamp(),
+      });
+
+      debugPrint('✅ Handyman stats updated - Jobs: $jobCount, Rating: ${avgRating.toStringAsFixed(1)}, Earned: $earnings');
+    } catch (e) {
+      debugPrint('❌ Error updating handyman stats: $e');
+      rethrow;
+    }
+  }
+
   Stream<List<Map<String, dynamic>>> getHandymenByCategory(
     String categoryId, 
     String sortBy,
@@ -298,8 +361,7 @@ class FirestoreService {
       if (!bookingDoc.exists) throw Exception('Booking not found');
 
       final data = bookingDoc.data()!;
-      final bool isEmergency = data['is_emergency'] ?? false;
-      final double totalPrice = (data['total_price'] ?? 0.0).toDouble();
+      final handymanId = data['handyman_id'];
       
       await _db.collection('bookings').doc(bookingId).update({
         'status': 'Completed',
@@ -307,22 +369,8 @@ class FirestoreService {
         'updated_at': FieldValue.serverTimestamp(),
       });
 
-      // Update handyman's stats
-      final handymanId = data['handyman_id'];
-      
-      // Atomic stats update
-      final updates = {
-        'jobs_completed': FieldValue.increment(1),
-        'total_earnings': FieldValue.increment(totalPrice),
-        'updated_at': FieldValue.serverTimestamp(),
-      };
-      
-      if (isEmergency) {
-        updates['emergency_jobs_count'] = FieldValue.increment(1);
-        updates['emergency_earnings'] = FieldValue.increment(totalPrice);
-      }
-
-      await _db.collection('handymanProfiles').doc(handymanId).update(updates);
+      // Update stats
+      await updateHandymanStats(handymanId);
 
       await addNotification(
         recipientId: data['customer_id'],
@@ -582,7 +630,7 @@ class FirestoreService {
       await batch.commit();
 
       // 4. Update stats (Safe update)
-      await _updateHandymanRating(handymanId);
+      await updateHandymanStats(handymanId);
 
       await addNotification(
         recipientId: handymanId,

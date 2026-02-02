@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../models/booking_model.dart';
 import '../../services/firestore_service.dart';
 import '../../services/auth_service.dart';
@@ -197,113 +198,226 @@ class _HandymanHomeScreenState extends State<HandymanHomeScreen> {
     );
   }
 
-  Widget _buildStatsRow(Map<String, dynamic>? profile) {
-    // Robustly handle missing or null data fields
-    final String jobsDone = (profile?['jobs_completed'] ?? 0).toString();
-    final String earnings = (profile?['total_earnings'] ?? 0.0).toStringAsFixed(0);
-    final String rating = (profile?['rating_avg'] ?? 0.0).toStringAsFixed(1);
+  Widget _buildStatsRow(Map<String, dynamic>? handymanProfile) {
+    if (_userId == null) return const SliverToBoxAdapter(child: SizedBox());
 
-    return SliverToBoxAdapter(
-      child: Padding(
-        padding: const EdgeInsets.all(20),
-        child: Row(
-          children: [
-            _buildStatCard(jobsDone, 'Jobs Done', Icons.check_circle, AppColors.success),
-            const SizedBox(width: 12),
-            _buildStatCard('Rs $earnings', 'Earned', Icons.account_balance_wallet, AppColors.primary),
-            const SizedBox(width: 12),
-            _buildStatCard(rating, 'Rating', Icons.star, Colors.amber),
-          ],
-        ),
-      ),
+    // Master stream for all stats calculation from bookings and reviews
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('bookings')
+          .where('handyman_id', isEqualTo: _userId)
+          .where('status', isEqualTo: 'Completed')
+          .snapshots(),
+      builder: (context, bookingSnapshot) {
+        double totalIncome = 0.0;
+        int jobsDone = 0;
+        
+        if (bookingSnapshot.hasData) {
+          jobsDone = bookingSnapshot.data!.docs.length;
+          for (var doc in bookingSnapshot.data!.docs) {
+            final data = doc.data() as Map<String, dynamic>;
+            totalIncome += (data['total_price'] ?? 0.0).toDouble();
+          }
+        }
+
+        // Nested stream for ratings calculation
+        return StreamBuilder<QuerySnapshot>(
+          stream: FirebaseFirestore.instance
+              .collection('reviews')
+              .where('handyman_id', isEqualTo: _userId)
+              .snapshots(),
+          builder: (context, reviewSnapshot) {
+            double avgRating = 0.0;
+            if (reviewSnapshot.hasData && reviewSnapshot.data!.docs.isNotEmpty) {
+              double totalRating = 0.0;
+              for (var doc in reviewSnapshot.data!.docs) {
+                final data = doc.data() as Map<String, dynamic>;
+                totalRating += (data['rating'] ?? 0.0).toDouble();
+              }
+              avgRating = totalRating / reviewSnapshot.data!.docs.length;
+            }
+
+            return SliverToBoxAdapter(
+              child: Padding(
+                padding: const EdgeInsets.all(20),
+                child: Row(
+                  children: [
+                    _buildStatCard('$jobsDone', 'Jobs Done', Icons.check_circle, AppColors.success),
+                    const SizedBox(width: 12),
+                    _buildStatCard('Rs ${totalIncome.toStringAsFixed(0)}', 'Income', Icons.account_balance_wallet, AppColors.primary),
+                    const SizedBox(width: 12),
+                    _buildStatCard(avgRating.toStringAsFixed(1), 'Rating', Icons.star, Colors.amber),
+                  ],
+                ),
+              ),
+            );
+          }
+        );
+      }
     );
   }
 
-  Widget _buildEmergencySection(Map<String, dynamic>? profile) {
-    final bool active = profile?['accepts_emergencies'] ?? false;
-    final double earnings = (profile?['emergency_earnings'] ?? 0.0).toDouble();
-    final int count = profile?['emergency_jobs_count'] ?? 0;
-    final double baseRate = (profile?['hourly_rate'] ?? 0.0).toDouble();
+  Widget _buildEmergencySection(Map<String, dynamic>? handymanProfile) {
+    if (_userId == null) return const SliverToBoxAdapter(child: SizedBox());
+
+    final bool active = handymanProfile?['accepts_emergencies'] ?? false;
+    final double baseRate = (handymanProfile?['hourly_rate'] ?? 0.0).toDouble();
     final double emergencyRate = baseRate * 1.15;
 
-    return SliverToBoxAdapter(
-      child: Container(
-        margin: const EdgeInsets.symmetric(horizontal: 20),
-        padding: const EdgeInsets.all(16),
-        decoration: BoxDecoration(
-          color: active ? Colors.red.shade50 : Colors.white,
-          borderRadius: BorderRadius.circular(16),
-          border: Border.all(
-            color: active ? Colors.red.shade300 : Colors.grey.shade200,
-            width: active ? 2 : 1,
-          ),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
-              children: [
-                Icon(Icons.emergency, color: active ? Colors.red.shade700 : AppColors.textLight),
-                const SizedBox(width: 12),
-                const Expanded(child: Text('Emergency Services', style: TextStyle(fontWeight: FontWeight.bold))),
-                Switch(
-                  value: active,
-                  onChanged: _toggleEmergencyServices,
-                  activeColor: Colors.red.shade700,
+    // Calculate emergency stats locally from bookings stream
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('bookings')
+          .where('handyman_id', isEqualTo: _userId)
+          .where('status', isEqualTo: 'Completed')
+          .where('is_emergency', isEqualTo: true)
+          .snapshots(),
+      builder: (context, snapshot) {
+        double emergencyIncome = 0.0;
+        int emergencyJobsCount = 0;
+
+        if (snapshot.hasData) {
+          emergencyJobsCount = snapshot.data!.docs.length;
+          for (var doc in snapshot.data!.docs) {
+            final data = doc.data() as Map<String, dynamic>;
+            emergencyIncome += (data['total_price'] ?? 0.0).toDouble();
+          }
+        }
+
+        return SliverToBoxAdapter(
+          child: Container(
+            margin: const EdgeInsets.symmetric(horizontal: 20),
+            padding: const EdgeInsets.all(16),
+            decoration: BoxDecoration(
+              color: active ? Colors.red.shade50 : Colors.white,
+              borderRadius: BorderRadius.circular(16),
+              border: Border.all(
+                color: active ? Colors.red.shade300 : Colors.grey.shade200,
+                width: active ? 2 : 1,
+              ),
+              boxShadow: [
+                BoxShadow(
+                  color: Colors.black.withOpacity(active ? 0.1 : 0.05),
+                  blurRadius: 10,
+                  offset: const Offset(0, 4),
                 ),
               ],
             ),
-            if (active) ...[
-              const Divider(),
-              Row(
-                children: [
-                  Expanded(child: _buildEmergencyStatCard('Rs ${earnings.toStringAsFixed(0)}', 'Income', Icons.trending_up)),
-                  const SizedBox(width: 12),
-                  Expanded(child: _buildEmergencyStatCard('$count', 'Jobs', Icons.bolt)),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Row(
+                  children: [
+                    Container(
+                      padding: const EdgeInsets.all(8),
+                      decoration: BoxDecoration(
+                        color: active ? Colors.red.shade100 : AppColors.background,
+                        borderRadius: BorderRadius.circular(8),
+                      ),
+                      child: Icon(
+                        Icons.emergency,
+                        color: active ? Colors.red.shade700 : AppColors.textLight,
+                        size: 24,
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          const Text('Emergency Services', style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold)),
+                          Text(
+                            active ? 'Active - Receiving priority jobs' : 'Earn 15% more with emergencies',
+                            style: TextStyle(fontSize: 12, color: active ? Colors.red.shade700 : AppColors.textLight),
+                          ),
+                        ],
+                      ),
+                    ),
+                    Switch(
+                      value: active,
+                      onChanged: _toggleEmergencyServices,
+                      activeColor: Colors.white,
+                      activeTrackColor: Colors.red.shade700,
+                      inactiveThumbColor: Colors.white,
+                      inactiveTrackColor: Colors.grey.shade300,
+                    ),
+                  ],
+                ),
+                if (active) ...[
+                  const Divider(height: 24),
+                  Row(
+                    children: [
+                      Expanded(child: _buildEmergencyStatCard('Rs ${emergencyIncome.toStringAsFixed(0)}', 'Emergency Income', Icons.trending_up)),
+                      const SizedBox(width: 12),
+                      Expanded(child: _buildEmergencyStatCard('$emergencyJobsCount', 'Emergency Jobs', Icons.bolt)),
+                    ],
+                  ),
+                  const SizedBox(height: 12),
+                  Container(
+                    padding: const EdgeInsets.all(12),
+                    decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
+                    child: Column(
+                      children: [
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            const Text('Standard Rate:', style: TextStyle(fontSize: 13)),
+                            Text('Rs ${baseRate.toStringAsFixed(0)}/hr', style: const TextStyle(fontSize: 13)),
+                          ],
+                        ),
+                        const SizedBox(height: 4),
+                        Row(
+                          mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                          children: [
+                            Text('Emergency Rate:', style: TextStyle(fontSize: 13, color: Colors.red.shade700, fontWeight: FontWeight.w600)),
+                            Text('Rs ${emergencyRate.toStringAsFixed(0)}/hr (+15%)', style: TextStyle(fontSize: 13, color: Colors.red.shade700, fontWeight: FontWeight.w600)),
+                          ],
+                        ),
+                      ],
+                    ),
+                  ),
                 ],
-              ),
-              const SizedBox(height: 8),
-              Text('Emergency Rate: Rs ${emergencyRate.toStringAsFixed(0)}/hr (+15%)', 
-                style: TextStyle(fontSize: 12, color: Colors.red.shade700, fontWeight: FontWeight.bold)),
-            ],
-          ],
-        ),
-      ),
+              ],
+            ),
+          ),
+        );
+      }
     );
   }
 
   Widget _buildEmergencyStatCard(String value, String label, IconData icon) {
-    return Column(
-      children: [
-        Icon(icon, color: Colors.red.shade700, size: 18),
-        Text(value, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 14)),
-        Text(label, style: const TextStyle(fontSize: 10, color: AppColors.textLight)),
-      ],
+    return Container(
+      padding: const EdgeInsets.all(12),
+      decoration: BoxDecoration(color: Colors.white, borderRadius: BorderRadius.circular(8)),
+      child: Column(
+        children: [
+          Icon(icon, color: Colors.red.shade700, size: 20),
+          const SizedBox(height: 4),
+          Text(value, style: TextStyle(fontSize: 16, fontWeight: FontWeight.bold, color: Colors.red.shade700)),
+          Text(label, style: const TextStyle(fontSize: 10, color: AppColors.textLight), textAlign: TextAlign.center),
+        ],
+      ),
     );
   }
 
   Widget _buildBookingsStream() {
     if (_userId == null) return const SliverToBoxAdapter(child: SizedBox());
 
-    return StreamBuilder<List<Booking>>(
-      stream: _firestoreService.getHandymanBookings(_userId!),
+    return StreamBuilder<QuerySnapshot>(
+      stream: FirebaseFirestore.instance
+          .collection('bookings')
+          .where('handyman_id', isEqualTo: _userId)
+          .snapshots(),
       builder: (context, snapshot) {
-        if (snapshot.hasError) {
-          return const SliverToBoxAdapter(child: Center(child: Text('Error loading bookings')));
-        }
-        
-        if (!snapshot.hasData) {
-          return const SliverToBoxAdapter(child: Center(child: CircularProgressIndicator()));
-        }
+        if (snapshot.hasError) return const SliverToBoxAdapter(child: Center(child: Text('Error loading bookings')));
+        if (!snapshot.hasData) return const SliverToBoxAdapter(child: Center(child: CircularProgressIndicator()));
 
-        final bookings = snapshot.data!.where((b) => 
-          b.status == 'Confirmed' || b.status == 'Pending' || 
-          b.status == 'On The Way' || b.status == 'In Progress'
-        ).toList();
+        final bookings = snapshot.data!.docs
+            .map((doc) => Booking.fromFirestore(doc))
+            .where((b) => b.status == 'Confirmed' || b.status == 'Pending' || b.status == 'On The Way' || b.status == 'In Progress')
+            .toList();
 
-        if (bookings.isEmpty) {
-          return _buildEmptyState();
-        }
+        if (bookings.isEmpty) return _buildEmptyState();
 
         return SliverList(
           delegate: SliverChildBuilderDelegate(
@@ -320,9 +434,7 @@ class _HandymanHomeScreenState extends State<HandymanHomeScreen> {
       onTap: () {
         Navigator.push(
           context,
-          MaterialPageRoute(
-            builder: (_) => BookingDetailScreen(booking: booking),
-          ),
+          MaterialPageRoute(builder: (_) => BookingDetailScreen(booking: booking)),
         );
       },
       child: Container(
@@ -340,16 +452,40 @@ class _HandymanHomeScreenState extends State<HandymanHomeScreen> {
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Text(booking.serviceName, style: const TextStyle(fontWeight: FontWeight.bold)),
-                Text(booking.status, style: const TextStyle(color: AppColors.primary, fontSize: 12, fontWeight: FontWeight.bold)),
+                Row(
+                  children: [
+                    if (booking.isEmergency) Icon(Icons.emergency, color: Colors.red.shade700, size: 20),
+                    if (booking.isEmergency) const SizedBox(width: 8),
+                    Text(booking.serviceName, style: const TextStyle(fontWeight: FontWeight.bold)),
+                  ],
+                ),
+                Text(booking.status, style: TextStyle(color: _getStatusColor(booking.status), fontSize: 12, fontWeight: FontWeight.bold)),
               ],
             ),
-            const SizedBox(height: 4),
+            const SizedBox(height: 8),
             Text(booking.customerName, style: const TextStyle(color: AppColors.textLight)),
+            const SizedBox(height: 4),
+            Row(
+              children: [
+                const Icon(Icons.location_on_outlined, size: 14, color: AppColors.textLight),
+                const SizedBox(width: 4),
+                Expanded(child: Text(booking.address, style: const TextStyle(fontSize: 12, color: AppColors.textLight), maxLines: 1, overflow: TextOverflow.ellipsis)),
+              ],
+            ),
           ],
         ),
       ),
     );
+  }
+
+  Color _getStatusColor(String status) {
+    switch (status.toLowerCase()) {
+      case 'confirmed': return AppColors.success;
+      case 'pending': return Colors.orange;
+      case 'on the way': return Colors.blue;
+      case 'in progress': return Colors.purple;
+      default: return Colors.grey;
+    }
   }
 
   Widget _buildStatCard(String val, String label, IconData icon, Color color) {

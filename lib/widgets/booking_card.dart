@@ -1,5 +1,5 @@
 // lib/widgets/booking_card.dart
-// FIXED VERSION - Added proper handling for review feature
+// FIXED VERSION - No overflow, proper address display with 2 rows
 import 'package:flutter/material.dart';
 import '../models/booking_model.dart';
 import '../utils/colors.dart';
@@ -40,8 +40,7 @@ class BookingCard extends StatelessWidget {
     final String formattedDate = DateFormat('dd MMM yyyy').format(booking.scheduledStartTime);
     final String formattedTime = DateFormat('hh:mm a').format(booking.scheduledStartTime);
 
-    // FIX: Check if booking has hasReview property, otherwise default to false
-    // This prevents runtime errors if the property is missing
+    // Check if booking has hasReview property, otherwise default to false
     final bool hasReview = booking.hasReview ?? false;
     final bool canReview = booking.status == 'Completed' && !hasReview;
 
@@ -109,39 +108,53 @@ class BookingCard extends StatelessWidget {
             ),
             const SizedBox(height: 12),
 
+            // Customer Name Row
             Row(
               children: [
                 const Icon(Icons.person_outline, size: 16, color: AppColors.textLight),
                 const SizedBox(width: 8),
-                Text(
-                  booking.customerName,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    color: AppColors.textLight,
-                    fontWeight: FontWeight.w500,
-                  ),
-                ),
-              ],
-            ),
-
-            const SizedBox(height: 8),
-            Row(
-              children: [
-                const Icon(Icons.location_on_outlined, size: 16, color: AppColors.textLight),
-                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    booking.address,
+                    booking.customerName,
                     style: const TextStyle(
                       fontSize: 13,
                       color: AppColors.textLight,
+                      fontWeight: FontWeight.w500,
                     ),
+                    maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                   ),
                 ),
               ],
             ),
 
+            const SizedBox(height: 8),
+
+            // FIX: Address Row with proper height and 2 lines support
+            Row(
+              crossAxisAlignment: CrossAxisAlignment.start, // FIX: Align to start for multi-line
+              children: [
+                const Padding(
+                  padding: EdgeInsets.only(top: 2), // FIX: Align icon with first line
+                  child: Icon(Icons.location_on_outlined, size: 16, color: AppColors.textLight),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: Text(
+                    booking.address,
+                    style: const TextStyle(
+                      fontSize: 12, // FIX: Reduced from 13 to 12
+                      color: AppColors.textLight,
+                      height: 1.3, // FIX: Added line height for better spacing
+                    ),
+                    maxLines: 2, // FIX: Allow 2 lines for address
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
+
+            // Notes Section
             if (booking.notes.isNotEmpty) ...[
               const SizedBox(height: 8),
               Container(
@@ -150,43 +163,71 @@ class BookingCard extends StatelessWidget {
                   color: Colors.grey[50],
                   borderRadius: BorderRadius.circular(8),
                 ),
-                child: Text(
-                  booking.notes,
-                  style: const TextStyle(
-                      fontSize: 12,
-                      color: Colors.grey,
-                      fontStyle: FontStyle.italic
-                  ),
-                  maxLines: 2,
-                  overflow: TextOverflow.ellipsis,
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    const Icon(Icons.note_outlined, size: 14, color: AppColors.textLight),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        booking.notes,
+                        style: const TextStyle(
+                          fontSize: 11, // FIX: Reduced from 12
+                          color: Colors.grey,
+                          fontStyle: FontStyle.italic,
+                          height: 1.3,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    ),
+                  ],
                 ),
               ),
             ],
 
             const Divider(height: 24),
 
+            // Date, Time, and Price Row
             Row(
               mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      children: [
-                        const Icon(Icons.calendar_today, size: 14, color: AppColors.primary),
-                        const SizedBox(width: 4),
-                        Text(
-                          formattedDate,
-                          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.bold),
-                        ),
-                      ],
-                    ),
-                    const SizedBox(height: 2),
-                    Text(
-                      formattedTime,
-                      style: const TextStyle(fontSize: 12, color: AppColors.textLight),
-                    ),
-                  ],
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Row(
+                        children: [
+                          const Icon(Icons.calendar_today, size: 14, color: AppColors.primary),
+                          const SizedBox(width: 4),
+                          Flexible(
+                            child: Text(
+                              formattedDate,
+                              style: const TextStyle(
+                                fontSize: 12,
+                                fontWeight: FontWeight.bold,
+                              ),
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 4),
+                      Row(
+                        children: [
+                          const Icon(Icons.access_time, size: 14, color: AppColors.textLight),
+                          const SizedBox(width: 4),
+                          Text(
+                            formattedTime,
+                            style: const TextStyle(
+                              fontSize: 12,
+                              color: AppColors.textLight,
+                            ),
+                          ),
+                        ],
+                      ),
+                    ],
+                  ),
                 ),
                 Text(
                   'Rs ${booking.totalPrice.toStringAsFixed(0)}',
@@ -212,7 +253,7 @@ class BookingCard extends StatelessWidget {
                       backgroundColor: Colors.transparent,
                       builder: (sheetContext) => ReviewBottomSheet(
                         handymanId: booking.handymanId,
-                        handymanName: 'Handyman', // You can fetch this if needed
+                        handymanName: 'Handyman',
                         bookingId: booking.id,
                       ),
                     );
