@@ -1,4 +1,3 @@
-// lib/screens/handyman/handyman_detail_screen.dart
 import 'package:flutter/material.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
 import '../../widgets/custom_button.dart';
@@ -9,12 +8,14 @@ import '../../services/firestore_service.dart';
 
 class HandymanDetailScreen extends StatefulWidget {
   final String handymanId;
-  final bool isEmergency; // NEW: Emergency mode indicator
+  final bool isEmergency;
+  final bool autoOpenBooking; // ✅ Added
 
   const HandymanDetailScreen({
     Key? key,
     required this.handymanId,
-    this.isEmergency = false, // NEW: Default to false
+    this.isEmergency = false,
+    this.autoOpenBooking = false, // ✅ Added
   }) : super(key: key);
 
   @override
@@ -22,6 +23,8 @@ class HandymanDetailScreen extends StatefulWidget {
 }
 
 class _HandymanDetailScreenState extends State<HandymanDetailScreen> {
+  bool _hasAutoOpened = false; // To prevent multiple opens if stream updates
+
   @override
   Widget build(BuildContext context) {
     return StreamBuilder<DocumentSnapshot>(
@@ -52,6 +55,29 @@ class _HandymanDetailScreenState extends State<HandymanDetailScreen> {
             final String lastName = uData?['last_name'] ?? '';
             final String fullName = "$firstName $lastName";
 
+            final double baseRate = (hData['hourly_rate'] is int)
+                ? (hData['hourly_rate'] as int).toDouble()
+                : (hData['hourly_rate'] ?? 0.0).toDouble();
+
+            final double displayRate = widget.isEmergency
+                ? FirestoreService.calculateEmergencyPrice(baseRate)
+                : baseRate;
+
+            final String category = hData['category_name'] ?? 'Service';
+            final bool isAvailable = hData['work_status'] == "Available";
+            final bool acceptsEmergencies = hData['accepts_emergencies'] ?? true;
+            final bool canBook = widget.isEmergency
+                ? (isAvailable && acceptsEmergencies)
+                : isAvailable;
+
+            // ✅ Auto-open booking sheet if requested and data is ready
+            if (widget.autoOpenBooking && !_hasAutoOpened && canBook) {
+              _hasAutoOpened = true;
+              WidgetsBinding.instance.addPostFrameCallback((_) {
+                _openBookingSheet(context, fullName, displayRate, category);
+              });
+            }
+
             return Scaffold(
               backgroundColor: AppColors.background,
               body: CustomScrollView(
@@ -75,11 +101,26 @@ class _HandymanDetailScreenState extends State<HandymanDetailScreen> {
                   const SliverToBoxAdapter(child: SizedBox(height: 100)),
                 ],
               ),
-              bottomNavigationBar: _buildBottomBar(context, hData, fullName),
+              bottomNavigationBar: _buildBottomBar(context, hData, fullName, displayRate, category, canBook),
             );
           },
         );
       },
+    );
+  }
+
+  void _openBookingSheet(BuildContext context, String fullName, double displayRate, String category) {
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (sheetContext) => BookingBottomSheet(
+        handymanId: widget.handymanId,
+        handymanName: fullName,
+        hourlyRate: displayRate,
+        serviceName: category,
+        isEmergency: widget.isEmergency,
+      ),
     );
   }
 
@@ -355,22 +396,8 @@ class _HandymanDetailScreenState extends State<HandymanDetailScreen> {
     );
   }
 
-  Widget _buildBottomBar(BuildContext context, Map<String, dynamic> hData, String fullName) {
-    final double baseRate = (hData['hourly_rate'] is int)
-        ? (hData['hourly_rate'] as int).toDouble()
-        : (hData['hourly_rate'] ?? 0.0).toDouble();
-    
-    final double displayRate = widget.isEmergency 
-        ? FirestoreService.calculateEmergencyPrice(baseRate)
-        : baseRate;
-
-    final String category = hData['category_name'] ?? 'Service';
-    final bool isAvailable = hData['work_status'] == "Available";
+  Widget _buildBottomBar(BuildContext context, Map<String, dynamic> hData, String fullName, double displayRate, String category, bool canBook) {
     final bool acceptsEmergencies = hData['accepts_emergencies'] ?? true;
-
-    final bool canBook = widget.isEmergency 
-        ? (isAvailable && acceptsEmergencies)
-        : isAvailable;
 
     return Container(
       padding: const EdgeInsets.all(20),
@@ -399,20 +426,7 @@ class _HandymanDetailScreenState extends State<HandymanDetailScreen> {
             CustomButton(
               text: canBook ? 'Book Now' : 'Not Available',
               onPressed: canBook
-                  ? () {
-                showModalBottomSheet(
-                  context: context,
-                  isScrollControlled: true,
-                  backgroundColor: Colors.transparent,
-                  builder: (sheetContext) => BookingBottomSheet(
-                    handymanId: widget.handymanId,
-                    handymanName: fullName,
-                    hourlyRate: displayRate,
-                    serviceName: category,
-                    isEmergency: widget.isEmergency,
-                  ),
-                );
-              }
+                  ? () => _openBookingSheet(context, fullName, displayRate, category)
                   : () {},
               backgroundColor: canBook 
                   ? (widget.isEmergency ? Colors.red.shade700 : AppColors.primary)

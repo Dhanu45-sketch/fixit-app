@@ -4,7 +4,7 @@ import 'package:flutter/material.dart';
 import '../home/customer_home_screen.dart';
 import '../home/handyman_home_screen.dart';
 import 'role_selection_screen.dart';
-import 'approval_pending_screen.dart'; // NEW: Import approval screen
+import 'approval_pending_screen.dart';
 
 class AuthWrapper extends StatelessWidget {
   const AuthWrapper({Key? key}) : super(key: key);
@@ -37,7 +37,6 @@ class AuthWrapper extends StatelessWidget {
                 final bool isHandyman = userData['is_handyman'] ?? false;
 
                 if (isHandyman) {
-                  // NEW: Check handyman approval status
                   return FutureBuilder<DocumentSnapshot>(
                     future: FirebaseFirestore.instance
                         .collection('handymanProfiles')
@@ -54,7 +53,6 @@ class AuthWrapper extends StatelessWidget {
                         final handymanData = handymanSnapshot.data!.data() as Map<String, dynamic>;
                         final String approvalStatus = handymanData['approval_status'] ?? 'pending';
 
-                        // Route based on approval status
                         switch (approvalStatus) {
                           case 'approved':
                             return const HandymanHomeScreen();
@@ -67,23 +65,19 @@ class AuthWrapper extends StatelessWidget {
                         }
                       }
 
-                      // If handyman profile doesn't exist, show pending screen
                       return const ApprovalPendingScreen();
                     },
                   );
                 } else {
-                  // Customer - direct access
                   return const CustomerHomeScreen();
                 }
               }
 
-              // If user profile doesn't exist, default to customer home
               return const CustomerHomeScreen();
             },
           );
         }
 
-        // User not logged in
         return const RoleSelectionScreen();
       },
     );

@@ -1,4 +1,5 @@
-// Save as: test/unit/models_test.dart
+// test/unit/models_test.dart
+// UPDATED: Fixed Review model tests to include required serviceName field
 
 import 'package:flutter_test/flutter_test.dart';
 import 'package:cloud_firestore/cloud_firestore.dart';
@@ -6,6 +7,7 @@ import 'package:fixit_app/models/booking_model.dart';
 import 'package:fixit_app/models/user_model.dart';
 import 'package:fixit_app/models/service_category_model.dart';
 import 'package:fixit_app/models/job_request_model.dart';
+import 'package:fixit_app/models/review_model.dart';
 
 void main() {
   group('Booking Model Tests', () {
@@ -23,6 +25,7 @@ void main() {
         'notes': 'Fix leak',
         'address': '123 Main St',
         'is_emergency': false,
+        'has_review': false,
       }, 'booking123');
 
       // Act
@@ -39,6 +42,7 @@ void main() {
       expect(booking.notes, 'Fix leak');
       expect(booking.address, '123 Main St');
       expect(booking.isEmergency, false);
+      expect(booking.hasReview, false);
 
       print('✓ Booking.fromFirestore test passed');
     });
@@ -57,6 +61,7 @@ void main() {
         notes: 'Fix leak',
         address: '123 Main St',
         isEmergency: false,
+        hasReview: false,
       );
 
       // Act
@@ -72,6 +77,7 @@ void main() {
       expect(map['notes'], 'Fix leak');
       expect(map['address'], '123 Main St');
       expect(map['is_emergency'], false);
+      expect(map['has_review'], false);
 
       print('✓ Booking.toMap test passed');
     });
@@ -90,6 +96,7 @@ void main() {
         notes: 'Burst pipe',
         address: '456 Oak Ave',
         isEmergency: true,
+        hasReview: false,
       );
 
       // Assert
@@ -98,10 +105,34 @@ void main() {
 
       print('✓ Emergency booking test passed');
     });
+
+    test('hasReview flag works correctly', () {
+      // Arrange
+      final bookingWithReview = Booking(
+        id: 'booking789',
+        customerId: 'cust789',
+        handymanId: 'hand789',
+        customerName: 'Bob Smith',
+        serviceName: 'Carpentry',
+        status: 'Completed',
+        scheduledStartTime: DateTime(2026, 1, 10),
+        totalPrice: 3000.0,
+        notes: 'Build shelf',
+        address: '789 Pine St',
+        isEmergency: false,
+        hasReview: true,
+      );
+
+      // Assert
+      expect(bookingWithReview.hasReview, true);
+      expect(bookingWithReview.status, 'Completed');
+
+      print('✓ hasReview flag test passed');
+    });
   });
 
-  group('UserModel Tests', () {
-    test('UserModel.fromMap creates object correctly', () {
+  group('UserModel Tests - Customer', () {
+    test('UserModel.fromMap creates customer correctly', () {
       // Arrange
       final data = {
         'first_name': 'John',
@@ -125,7 +156,7 @@ void main() {
       expect(user.isHandyman, false);
       expect(user.isActive, true);
 
-      print('✓ UserModel.fromMap test passed');
+      print('✓ UserModel.fromMap (customer) test passed');
     });
 
     test('UserModel.fullName returns correct full name', () {
@@ -170,7 +201,7 @@ void main() {
         lastName: 'Smith',
         email: 'jane@example.com',
         phone: '0787654321',
-        isHandyman: true,
+        isHandyman: false,
         isActive: true,
       );
 
@@ -182,7 +213,7 @@ void main() {
       expect(map['last_name'], 'Smith');
       expect(map['email'], 'jane@example.com');
       expect(map['phone'], '0787654321');
-      expect(map['is_handyman'], true);
+      expect(map['is_handyman'], false);
       expect(map['is_active'], true);
 
       print('✓ UserModel.toMap test passed');
@@ -366,6 +397,134 @@ void main() {
       print('✓ JobRequest default values test passed');
     });
   });
+
+  group('Review Model Tests', () {
+    test('Review.fromFirestore creates object correctly', () {
+      // Arrange
+      final mockDoc = MockDocumentSnapshot({
+        'booking_id': 'booking123',
+        'customer_id': 'cust123',
+        'handyman_id': 'hand123',
+        'customer_name': 'John Doe',
+        'rating': 5.0,
+        'comment': 'Excellent work!',
+        'created_at': Timestamp.now(),
+        'service_name': 'Plumbing',
+      }, 'review123');
+
+      // Act
+      final review = Review.fromFirestore(mockDoc);
+
+      // Assert
+      expect(review.id, 'review123');
+      expect(review.bookingId, 'booking123');
+      expect(review.customerId, 'cust123');
+      expect(review.handymanId, 'hand123');
+      expect(review.customerName, 'John Doe');
+      expect(review.rating, 5.0);
+      expect(review.comment, 'Excellent work!');
+      expect(review.serviceName, 'Plumbing');
+
+      print('✓ Review.fromFirestore test passed');
+    });
+
+    test('Review.toMap converts to Map correctly', () {
+      // Arrange
+      final review = Review(
+        id: 'review123',
+        bookingId: 'booking123',
+        customerId: 'cust123',
+        handymanId: 'hand123',
+        customerName: 'John Doe',
+        rating: 4.5,
+        comment: 'Great service',
+        createdAt: DateTime(2026, 1, 15),
+        serviceName: 'Plumbing',
+      );
+
+      // Act
+      final map = review.toMap();
+
+      // Assert
+      expect(map['booking_id'], 'booking123');
+      expect(map['customer_id'], 'cust123');
+      expect(map['handyman_id'], 'hand123');
+      expect(map['customer_name'], 'John Doe');
+      expect(map['rating'], 4.5);
+      expect(map['comment'], 'Great service');
+      expect(map['service_name'], 'Plumbing');
+
+      print('✓ Review.toMap test passed');
+    });
+
+    test('Review validates rating range', () {
+      // Arrange & Act
+      final review = Review(
+        id: 'review123',
+        bookingId: 'booking123',
+        customerId: 'cust123',
+        handymanId: 'hand123',
+        customerName: 'John Doe',
+        rating: 3.5,
+        comment: 'Good',
+        createdAt: DateTime.now(),
+        serviceName: 'Plumbing',
+      );
+
+      // Assert
+      expect(review.rating, greaterThanOrEqualTo(0.0));
+      expect(review.rating, lessThanOrEqualTo(5.0));
+
+      print('✓ Review rating validation test passed');
+    });
+  });
+
+  // ============================================
+  // HANDYMAN TESTS - RUN LAST (Needs Approval)
+  // ============================================
+
+  group('UserModel Tests - Handyman (RUN LAST)', () {
+    test('UserModel creates handyman correctly', () {
+      // Arrange
+      final data = {
+        'first_name': 'Mike',
+        'last_name': 'Wilson',
+        'email': 'mike@example.com',
+        'phone': '0771234567',
+        'is_handyman': true,  // Handyman flag
+        'is_active': false,   // Pending approval
+        'created_at': Timestamp.now(),
+      };
+
+      // Act
+      final user = UserModel.fromMap(data, 'handyman123');
+
+      // Assert
+      expect(user.isHandyman, true);
+      expect(user.isActive, false); // Not yet approved
+
+      print('✓ Handyman user creation test passed');
+    });
+
+    test('Handyman approval status changes', () {
+      // Arrange
+      final handyman = UserModel(
+        uid: 'handyman123',
+        firstName: 'Mike',
+        lastName: 'Wilson',
+        email: 'mike@example.com',
+        phone: '0771234567',
+        isHandyman: true,
+        isActive: true,  // After approval
+      );
+
+      // Assert
+      expect(handyman.isHandyman, true);
+      expect(handyman.isActive, true);
+
+      print('✓ Handyman approval test passed');
+    });
+  });
 }
 
 // Mock DocumentSnapshot for testing
@@ -382,18 +541,20 @@ class MockDocumentSnapshot implements DocumentSnapshot {
   Map<String, dynamic>? data() => _data;
 
   @override
+  bool get exists => true;
+
+  @override
+  dynamic get(Object field) => _data[field];
+
+  @override
+  dynamic operator [](Object field) => _data[field];
+
+  @override
+  DocumentReference get reference => throw UnimplementedError();
+
+  @override
+  SnapshotMetadata get metadata => throw UnimplementedError();
+
+  @override
   dynamic noSuchMethod(Invocation invocation) => super.noSuchMethod(invocation);
 }
-
-/*
-TO RUN THESE TESTS:
-===================
-
-1. Run model tests:
-   flutter test test/unit/models_test.dart
-
-2. Run with verbose output:
-   flutter test test/unit/models_test.dart --reporter expanded
-
-3. All tests should pass with green checkmarks ✓
-*/

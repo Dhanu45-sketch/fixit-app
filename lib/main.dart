@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
 import 'firebase_options.dart';
 import 'utils/colors.dart';
-import 'screens/auth/auth_wrapper.dart'; // Import this!
+import 'screens/auth/auth_wrapper.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -28,7 +28,6 @@ class FixItApp extends StatelessWidget {
       title: 'FixIt - Handyman Services',
       debugShowCheckedModeBanner: false,
       theme: ThemeData(
-        // Using useMaterial3: true is recommended for modern Flutter apps
         useMaterial3: false,
         primarySwatch: _createMaterialColor(AppColors.primary),
         scaffoldBackgroundColor: AppColors.background,
@@ -39,7 +38,6 @@ class FixItApp extends StatelessWidget {
           backgroundColor: Colors.white,
           foregroundColor: AppColors.textDark,
         ),
-        // Adding global button theme to reduce code in screens
         elevatedButtonTheme: ElevatedButtonThemeData(
           style: ElevatedButton.styleFrom(
             backgroundColor: AppColors.primary,
@@ -48,14 +46,11 @@ class FixItApp extends StatelessWidget {
           ),
         ),
       ),
-      // THE FIX: Set home to AuthWrapper.
-      // AuthWrapper will decide if we go to Login, Role Selection, or Home.
       home: const AuthWrapper(),
     );
   }
 }
 
-// Your helper function is perfect - keeping it here.
 MaterialColor _createMaterialColor(Color color) {
   List strengths = <double>[.05];
   final swatch = <int, Color>{};

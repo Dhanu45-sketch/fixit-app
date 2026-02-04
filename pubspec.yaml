@@ -5,7 +5,7 @@ publish_to: 'none'
 version: 1.0.0+1
 
 environment:
-  sdk: '>=3.0.0 <4.0.0'  # FIX: More flexible SDK constraint
+  sdk: '>=3.0.0 <4.0.0'
 
 dependencies:
   url_launcher: ^6.2.1
@@ -13,7 +13,6 @@ dependencies:
   location: ^5.0.3
   image_picker: ^1.0.7
   cached_network_image: ^3.3.1
-
   flutter:
     sdk: flutter
 
@@ -42,6 +41,7 @@ dependencies:
   equatable: ^2.0.5
 
 dev_dependencies:
+  flutter_launcher_icons: "^0.13.1"
   flutter_test:
     sdk: flutter
   flutter_lints: ^5.0.0
@@ -60,8 +60,13 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+  assets:
+    - assets/images/logo.png
+    - assets/images/app_icon.png
 
-  # FIX: Add assets if you have any
-  # assets:
-  #   - assets/images/
-  #   - assets/icons/
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/images/app_icon.png"
+  adaptive_icon_background: "#ffffff"
+  adaptive_icon_foreground: "assets/images/app_icon.png"

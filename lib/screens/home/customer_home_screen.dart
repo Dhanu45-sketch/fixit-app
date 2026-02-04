@@ -11,7 +11,7 @@ import '../notifications/notifications_screen.dart';
 import '../profile/profile_screen.dart';
 import '../search/search_screen.dart';
 import '../services/service_detail_screen.dart';
-import '../map/map_screen.dart';
+import '../map/privacy_safe_map_screen.dart';
 import 'all_categories_screen.dart';
 
 class CustomerHomeScreen extends StatefulWidget {
@@ -71,7 +71,7 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       case 1:
         return const BookingsScreen();
       case 2:
-        return MapScreen(isEmergencyMode: _isEmergencyMode); // Pass emergency state
+        return const PrivacySafeMapScreen();
       case 3:
         return const NotificationsScreen();
       case 4:
@@ -279,44 +279,44 @@ class _CustomerHomeScreenState extends State<CustomerHomeScreen> {
       width: double.infinity,
       height: 65,
       decoration: BoxDecoration(
-        borderRadius: BorderRadius.circular(16),
-        gradient: LinearGradient(
-          begin: Alignment.topCenter,
-          end: Alignment.bottomCenter,
-          colors: [
-            AppColors.primary,
-            AppColors.primary.withOpacity(0.9),
-          ],
-        ),
+        borderRadius: BorderRadius.circular(12),
         boxShadow: [
+          // 3D-like raised effect with a white border
           BoxShadow(
-            color: AppColors.primary.withOpacity(0.4),
-            blurRadius: 12,
-            offset: const Offset(0, 6),
+            color: Colors.black12.withOpacity(0.4),
+            offset: const Offset(0, 5),
+            blurRadius: 9,
+          ),
+          const BoxShadow(
+            color: Colors.white24,
+            offset: Offset(0, 2),
+            spreadRadius: 2,
           ),
         ],
       ),
-      child: Material(
-        color: Colors.transparent,
-        child: InkWell(
-          onTap: () async {
-            final categoriesData = await _firestoreService.getServiceCategories().first;
-            final categories = categoriesData.map((e) => ServiceCategory.fromMap(e, e['id'])).toList();
-            if (mounted) {
-              Navigator.push(context, MaterialPageRoute(builder: (_) => AllCategoriesScreen(categories: categories)));
-            }
-          },
-          borderRadius: BorderRadius.circular(16),
-          child: const Center(
-            child: Text(
-              'Find Expert Help',
-              style: TextStyle(
-                color: Colors.white,
-                fontSize: 25,
-                fontWeight: FontWeight.bold,
-                letterSpacing: 1.1,
-              ),
-            ),
+      child: ElevatedButton(
+        onPressed: () async {
+          final categoriesData = await _firestoreService.getServiceCategories().first;
+          final categories = categoriesData.map((e) => ServiceCategory.fromMap(e, e['id'])).toList();
+          if (mounted) {
+            Navigator.push(context, MaterialPageRoute(builder: (_) => AllCategoriesScreen(categories: categories)));
+          }
+        },
+        style: ElevatedButton.styleFrom(
+          backgroundColor: AppColors.primary,
+          foregroundColor: Colors.white,
+          elevation: 2, // Handled by Container's shadow
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(16),
+            side: const BorderSide(color: Colors.white60, width: 3),
+          ),
+        ),
+        child: const Text(
+          'BOOK NOW!',
+          style: TextStyle(
+            fontSize: 22,
+            fontWeight: FontWeight.bold,
+            letterSpacing: 1.6,
           ),
         ),
       ),

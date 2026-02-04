@@ -3,7 +3,9 @@ import 'package:firebase_auth/firebase_auth.dart';
 import '../../services/auth_service.dart';
 import '../../services/firestore_service.dart';
 import '../../utils/colors.dart';
+import '../../widgets/location_display_widget.dart';
 import '../auth/role_selection_screen.dart';
+import '../settings/handyman_privacy_settings.dart';
 import 'edit_profile_screen.dart';
 
 class ProfileScreen extends StatefulWidget {
@@ -105,6 +107,8 @@ class _ProfileScreenState extends State<ProfileScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final currentUserId = _authService.currentUserId;
+
     return Scaffold(
       backgroundColor: AppColors.background,
       appBar: AppBar(
@@ -174,12 +178,19 @@ class _ProfileScreenState extends State<ProfileScreen> {
             ),
             const SizedBox(height: 30),
 
-            if (widget.isHandyman) ...[
+            if (widget.isHandyman && currentUserId != null) ...[
+              LocationDisplayWidget(handymanId: currentUserId),
+              const SizedBox(height: 12),
               _buildProfileItem(
-                Icons.work,
-                'Business Settings',
-                'Update rates & category',
-                _navigateToEdit,
+                Icons.security,
+                'Privacy Settings',
+                'Control location visibility',
+                () {
+                  Navigator.push(
+                    context,
+                    MaterialPageRoute(builder: (_) => const HandymanPrivacySettings()),
+                  );
+                },
               ),
               _buildProfileItem(
                 Icons.verified,
@@ -187,33 +198,10 @@ class _ProfileScreenState extends State<ProfileScreen> {
                 'View uploaded documents',
                 _navigateToEdit,
               ),
-              _buildProfileItem(
-                Icons.history,
-                'Earnings History',
-                'View your income',
-                    () {},
-              ),
             ] else ...[
-              _buildProfileItem(
-                Icons.favorite,
-                'Saved Handymen',
-                'Your favorite pros',
-                    () {},
-              ),
-              _buildProfileItem(
-                Icons.location_on,
-                'My Addresses',
-                'Manage service locations',
-                    () {},
-              ),
+              // Customer specific items removed
             ],
 
-            _buildProfileItem(
-              Icons.settings,
-              'Account Settings',
-              'Privacy and security',
-              _navigateToEdit,
-            ),
             _buildProfileItem(
               Icons.help_outline,
               'Support',

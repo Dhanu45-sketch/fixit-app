@@ -5,8 +5,9 @@ import '../../services/firestore_service.dart';
 import '../../utils/colors.dart';
 import '../../widgets/custom_button.dart';
 import '../../widgets/custom_textfield.dart';
-import '../../widgets/document_upload_widget.dart'; // Added import
+import '../../widgets/document_upload_widget.dart';
 import '../home/customer_home_screen.dart';
+import '../settings/handyman_privacy_registration.dart'; // Import this
 import 'approval_pending_screen.dart';
 
 class RegisterScreen extends StatefulWidget {
@@ -43,8 +44,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
   bool _isLoading = false;
   String? _errorMessage;
 
-  // NEW: Multi-step registration for Handymen
-  int _currentStep = 0; // 0: Info, 1: Documents
+  int _currentStep = 0; 
   String? _registeredUserId;
 
   @override
@@ -98,7 +98,7 @@ class _RegisterScreenState extends State<RegisterScreen> {
         if (mounted) {
           setState(() {
             _isLoading = false;
-            _currentStep = 1; // Move to Step 2: Documents
+            _currentStep = 1; // Move to Documents
             _registeredUserId = result?.user?.uid;
           });
         }
@@ -196,30 +196,16 @@ class _RegisterScreenState extends State<RegisterScreen> {
   Widget _buildDocumentStep() {
     return Column(
       children: [
-        // Progress indicator
-        Row(
-          children: [
-            const Icon(Icons.check_circle, color: AppColors.success),
-            const SizedBox(width: 8),
-            const Text('Account Created', style: TextStyle(fontWeight: FontWeight.bold)),
-            const Spacer(),
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
-              decoration: BoxDecoration(
-                color: AppColors.secondary.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(20),
-              ),
-              child: const Text('Step 2/2', style: TextStyle(color: AppColors.secondary, fontWeight: FontWeight.bold)),
-            ),
-          ],
-        ),
+        _buildProgressHeader('Step 2/4', 'Identity Verification'),
         const SizedBox(height: 24),
         
         DocumentUploadWidget(
           userId: _registeredUserId!,
           onUploadComplete: () {
-            Navigator.of(context).pushReplacement(
-              MaterialPageRoute(builder: (_) => const ApprovalPendingScreen()),
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const HandymanPrivacySettings(),
+              ),
             );
           },
         ),
@@ -227,11 +213,32 @@ class _RegisterScreenState extends State<RegisterScreen> {
         const SizedBox(height: 16),
         TextButton(
           onPressed: () {
-             Navigator.of(context).pushReplacement(
-              MaterialPageRoute(builder: (_) => const ApprovalPendingScreen()),
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => const HandymanPrivacySettings(),
+              ),
             );
           },
-          child: const Text('Upload Later (Your account will remain pending)', style: TextStyle(color: AppColors.textLight)),
+          child: const Text('Upload Later', style: TextStyle(color: AppColors.textLight)),
+        ),
+      ],
+    );
+  }
+
+  Widget _buildProgressHeader(String stepText, String title) {
+    return Row(
+      children: [
+        const Icon(Icons.check_circle, color: AppColors.success),
+        const SizedBox(width: 8),
+        Text(title, style: const TextStyle(fontWeight: FontWeight.bold)),
+        const Spacer(),
+        Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+          decoration: BoxDecoration(
+            color: AppColors.secondary.withOpacity(0.1),
+            borderRadius: BorderRadius.circular(20),
+          ),
+          child: Text(stepText, style: const TextStyle(color: AppColors.secondary, fontWeight: FontWeight.bold)),
         ),
       ],
     );
